@@ -1,7 +1,4 @@
-
-
-
-PLOTGEN := ../plotgen.py
+PLOTGEN := ../plotgen
 
 INPUT  := testdata.csv
 OUTDIR := tests.out

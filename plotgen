@@ -37,7 +37,7 @@ import shutil
 import xopen
 import seaborn
 
-__prog__ = 'plotgen.py'
+__prog__ = 'plotgen'
 __version__ = '0.1.1'
 __url__ = 'https://github.com/bgottschall/plotgen'
 
