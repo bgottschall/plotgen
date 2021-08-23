@@ -38,7 +38,7 @@ import xopen
 import seaborn
 
 __prog__ = 'plotgen'
-__version__ = '0.1.1'
+__version__ = '0.2.0'
 __url__ = 'https://github.com/bgottschall/plotgen'
 
 
@@ -2036,32 +2036,28 @@ plotScript.write("""
 if args.browser:
     fig.show()
 if len(args.output) > 0:
-    if not args.quiet:
-        openWith = None
-        for app in ['xdg-open', 'open', 'start']:
-            if shutil.which(app) is not None:
-                openWith = app
-                break
-        if openWith is None:
-            args.quiet = True
-
     for output in args.output:
         outputFormat = output.lower().split('.')[-1]
         if outputFormat == 'html':
             fig.write_html(output)
         else:
             fig.write_image(output, width=args.width, height=args.height)
+
         if not args.quiet:
             print(f'Saved to {output}')
             try:
-                subprocess.check_call([openWith, output], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
+                if sys.platform == "win32":
+                    os.startfile(output)
+                else:
+                    opener = "open" if sys.platform == "darwin" else "xdg-open"
+                    subprocess.call([opener, output], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
             except Exception:
                 print(f'Could not open {output}!')
 """)
 
 plotScript.close()
 if args.browser or len(args.output) > 0:
-    cmdLine = ['python3', plotScriptName]
+    cmdLine = ['python', plotScriptName]
     if args.browser:
         cmdLine.append('--browser')
     if args.quiet:

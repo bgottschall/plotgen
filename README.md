@@ -1,4 +1,10 @@
-# plotgen
+# plotgen: easy data parsing and plot script generator
+
+[![PyPI Latest Release](https://img.shields.io/pypi/v/plotgen.svg)](https://pypi.org/project/plotgen/)
+[![Package Status](https://img.shields.io/pypi/status/plotgen.svg)](https://pypi.org/project/plotgen/)
+[![License](https://img.shields.io/pypi/l/plotgen.svg)](https://github.com/bgottschall/plotgen/blob/master/LICENSE)
+
+## About
 
 Uses plotly to visualize data (e.g. tab, space, comma separated files) or pickled pandas dataframes. A lot of features are supported like reading in files with different separators, selecting and sorting columns, processing of multiple files, plotting line, scatter, bar, violin, box and gantt charts and customizing the graphs to all the needs. Many operations can be applied before plotting, like joining files, computing over rows and columns (sum, mean, median...), normalising data and filtering.
 
