@@ -13,7 +13,7 @@ pip install plotgen
 
 ### Manual
 
-This is a single script project to allow the highest level of portability. Therefor manual installation is easy as you only have to put `plotgen.py` within your path and satisfy the requirements:
+This is a single script project to allow the highest level of portability. Therefor manual installation is easy as you only have to put `plotgen` within your path and satisfy the requirements:
 ```
 pip install -r requirements.txt
 ```
@@ -66,38 +66,38 @@ It is also possible to plot many files into the same plot by just targetting the
 ```
 plotgen -i lines.tsv --plot line --output line.png
 ```
-![Line Chart](/plots/line.png)
+![Line Chart](https://raw.githubusercontent.com/bgottschall/plotgen/main/plots/line.png)
 #### Scatter Chart
 ```
 plotgen -i scatter.tsv --plot line --line-mode markers --output scatter.png
 ```
-![Scatter Chart](/plots/scatter.png)
+![Scatter Chart](https://raw.githubusercontent.com/bgottschall/plotgen/main/plots/scatter.png)
 #### Bar Chart
 ```
 plotgen -i bar.tsv --plot bar --output bar.png
 ```
-![Bar Chart](/plots/bar.png)
+![Bar Chart](https://raw.githubusercontent.com/bgottschall/plotgen/main/plots/bar.png)
 #### Box Chart
 ```
 plotgen -i distribution.tsv --plot box --output box.png
 ```
-![Box Chart](/plots/box.png)
+![Box Chart](https://raw.githubusercontent.com/bgottschall/plotgen/main/plots/box.png)
 #### Violin Chart
 ```
 plotgen -i distribution.tsv --plot violin --output violin.png
 ```
-![Violin Chart](/plots/violin.png)
+![Violin Chart](https://raw.githubusercontent.com/bgottschall/plotgen/main/plots/violin.png)
 #### Gantt Chart
 ```
 plotgen -i gantt.tsv --plot bar --bar-mode stack --bar-text-position inside --orientation h --x-type date --output gantt.png
 ```
-![Gantt Chart](/plots/gantt.png)
+![Gantt Chart](https://raw.githubusercontent.com/bgottschall/plotgen/main/plots/gantt.png)
 ```
 plotgen -i gantt_time.tsv --plot bar --bar-mode stack --bar-text-position outside --orientation h --x-type date --output gantt_time.png
 ```
-![Gantt Time Chart](/plots/gantt_time.png)
+![Gantt Time Chart](https://raw.githubusercontent.com/bgottschall/plotgen/main/plots/gantt_time.png)
 #### Combined Subplots
 ```
 plotgen -i lines.tsv --colspan 2 -i scatter.tsv --row 2 --colspan 1 --line-mode markers -i bar.tsv --col 2 --plot bar -i distribution.csv --row 3 --col 1 --plot violin -i distribution.csv --col 2 --plot box --horizontal-spacing 0.05 --vertical-spacing 0.05 --per-trace-colours --output subplot.png
 ```
-![Subplot Chart](/plots/subplots.png)
+![Subplot Chart](https://raw.githubusercontent.com/bgottschall/plotgen/main/plots/subplots.png)
