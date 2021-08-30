@@ -38,8 +38,17 @@ import xopen
 import seaborn
 
 __prog__ = 'plotgen'
-__version__ = '0.2.0'
+__version__ = '0.3.0'
 __url__ = 'https://github.com/bgottschall/plotgen'
+
+
+# All options that are forwared to the plotting script will be filtered through here
+def escapedStr(val: str):
+    return val.translate(str.maketrans({
+        "'": r"\'",
+        "\\": r"\\",
+        "\"": r"\"",
+    }))
 
 
 def isFloat(val):
@@ -753,18 +762,18 @@ parserFileOptions.add_argument("--pickle", help="pickle data frames to file (one
 parserPlotOptions = parser.add_argument_group('plot options')
 parserPlotOptions.add_argument('--plot', choices=['line', 'bar', 'box', 'violin'], help='plot type', default='line', action=ChildAction, parent=inputFileArgument)
 parserPlotOptions.add_argument("--orientation", help="set plot orientation", default='auto', choices=['vertical', 'v', 'horizontal', 'h', 'auto'], action=ChildAction, parent=inputFileArgument)
-parserPlotOptions.add_argument("--title", help="subplot title", type=str, default=None, sticky_default=True, action=ChildAction, parent=inputFileArgument)
-parserPlotOptions.add_argument("--use-name", help="use name for traces", type=str, default=None, sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserPlotOptions.add_argument("--title", help="subplot title", type=escapedStr, default=None, sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserPlotOptions.add_argument("--use-name", help="use name for traces", type=escapedStr, default=None, sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserPlotOptions.add_argument('--row', type=int, choices=Range(1, None), help='subplot row (default %(default)s)', default=1, action=ChildAction, parent=inputFileArgument)
 parserPlotOptions.add_argument('--rowspan', type=int, choices=Range(1, None), help='subplot rowspan (default %(default)s)', default=1, action=ChildAction, parent=inputFileArgument)
 parserPlotOptions.add_argument('--col', type=int, choices=Range(1, None), help='subplot column (default %(default)s)', default=1, action=ChildAction, parent=inputFileArgument)
 parserPlotOptions.add_argument('--colspan', type=int, choices=Range(1, None), help='subplot columnspan (default %(default)s)', default=1, action=ChildAction, parent=inputFileArgument)
 
 parserPlotOptions.add_argument("--error", help="show error markers in plot (need to be supplied by data)", default='hide', choices=['show', 'hide'], action=ChildAction, parent=inputFileArgument)
-parserPlotOptions.add_argument("--trace-names", help="set individual trace names", default=[], sticky_default=True, type=str, nargs='+', action=ChildAction, parent=inputFileArgument)
-parserPlotOptions.add_argument("--trace-colours", help="define explicit trace colours", default=[], nargs='+', type=str, sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserPlotOptions.add_argument("--trace-names", help="set individual trace names", default=[], sticky_default=True, type=escapedStr, nargs='+', action=ChildAction, parent=inputFileArgument)
+parserPlotOptions.add_argument("--trace-colours", help="define explicit trace colours", default=[], nargs='+', type=escapedStr, sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserPlotOptions.add_argument("--line-width", help="set line width (default %(default)s)", type=int, default=1, choices=Range(0,), action=ChildAction, parent=inputFileArgument)
-parserPlotOptions.add_argument("--line-colour", help="set line colour  (default %(default)s) (line charts are using just colour)", type=str, default='#222222', action=ChildAction, parent=inputFileArgument)
+parserPlotOptions.add_argument("--line-colour", help="set line colour  (default %(default)s) (line charts are using just colour)", type=escapedStr, default='#222222', action=ChildAction, parent=inputFileArgument)
 parserPlotOptions.add_argument("--opacity", help="colour opacity (default 0.8 for overlay modes, else 1.0)", choices=Range(0, 1, ['auto']), action=ChildAction, parent=inputFileArgument)
 parserPlotOptions.add_argument("--offsetgroups", help="set explicit offsetgroups for e.g. bar charts", type=int, default='auto', nargs='+', choices=Range(0, None, ['auto']), sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserPlotOptions.add_argument("--legend-entries", help="choose which entries are shown in legend", choices=['all', 'unique', 'none'], default=None, action=ChildAction, parent=inputFileArgument)
@@ -784,7 +793,7 @@ parserBarPlotOptions.add_argument("--bar-mode", help="choose barmode (default %(
 parserBarPlotOptions.add_argument("--bar-width", help="set explicit bar width", choices=Range(0, None, ['auto']), default='auto', action=ChildAction, parent=inputFileArgument)
 parserBarPlotOptions.add_argument("--bar-shift", help="set bar shift", choices=Range(None, None, ['auto']), default='auto', action=ChildAction, parent=inputFileArgument)
 parserBarPlotOptions.add_argument("--bar-text-position", help="choose bar text position (default %(default)s)", choices=["inside", "outside", "auto", "none"], default='none', action=ChildAction, parent=inputFileArgument)
-parserBarPlotOptions.add_argument("--bar-text-template", help="set bar text template (default %(default)s)", type=str, default='', action=ChildAction, parent=inputFileArgument)
+parserBarPlotOptions.add_argument("--bar-text-template", help="set bar text template (default %(default)s)", type=escapedStr, default='', action=ChildAction, parent=inputFileArgument)
 parserBarPlotOptions.add_argument("--bar-gap", help="set bar gap (default $(default)s)", choices=Range(0, 1, ['auto']), default='auto')
 parserBarPlotOptions.add_argument("--bar-group-gap", help="set bar group gap (default $(default)s)", choices=Range(0, 1), default=0)
 
@@ -834,33 +843,35 @@ parserPlotAxisOptions.add_argument("--y-tickmode", help="tick mode y-axis (defau
 parserPlotAxisOptions.add_argument("--x-tickmode", help="tick mode x-axis (default '%(default)s')", choices=['auto', 'linear', 'array'], default='auto', sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserPlotAxisOptions.add_argument("--y-nticks", help="number of ticks on y-axis (only tick mode auto) (default %(default)s)", choices=Range(0,), default=0, sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserPlotAxisOptions.add_argument("--x-nticks", help="number of ticks on x-axis (only tick mode auto) (default %(default)s)", choices=Range(0,), default=0, sticky_default=True, action=ChildAction, parent=inputFileArgument)
-parserPlotAxisOptions.add_argument("--y-tick0", help="first tick on y-axis (only tick mode linear) (default %(default)s)", type=str, default=None, sticky_default=True, action=ChildAction, parent=inputFileArgument)
-parserPlotAxisOptions.add_argument("--x-tick0", help="first tick on x-axis (only tick mode linear) (default %(default)s)", type=str, default=None, sticky_default=True, action=ChildAction, parent=inputFileArgument)
-parserPlotAxisOptions.add_argument("--y-dtick", help="tick step on y-axis (only tick mode linear) (default %(default)s)", type=str, default=None, sticky_default=True, action=ChildAction, parent=inputFileArgument)
-parserPlotAxisOptions.add_argument("--x-dtick", help="tick step on x-axis (only tick mode linear) (default %(default)s)", type=str, default=None, sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserPlotAxisOptions.add_argument("--y-tick0", help="first tick on y-axis (only tick mode linear) (default %(default)s)", type=escapedStr, default=None, sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserPlotAxisOptions.add_argument("--x-tick0", help="first tick on x-axis (only tick mode linear) (default %(default)s)", type=escapedStr, default=None, sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserPlotAxisOptions.add_argument("--y-dtick", help="tick step on y-axis (only tick mode linear) (default %(default)s)", type=escapedStr, default=None, sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserPlotAxisOptions.add_argument("--x-dtick", help="tick step on x-axis (only tick mode linear) (default %(default)s)", type=escapedStr, default=None, sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserPlotAxisOptions.add_argument("--y-tickvals", help="tick values on y-axis (only tick mode array) (default %(default)s)", default=[], sticky_default=True, nargs='+', action=ChildAction, parent=inputFileArgument)
 parserPlotAxisOptions.add_argument("--x-tickvals", help="tick values on x-axis (only tick mode array) (default %(default)s)", default=[], sticky_default=True, nargs='+', action=ChildAction, parent=inputFileArgument)
 parserPlotAxisOptions.add_argument("--y-ticktext", help="tick text on y-axis (only tick mode array) (default %(default)s)", default=[], sticky_default=True, nargs='+', action=ChildAction, parent=inputFileArgument)
 parserPlotAxisOptions.add_argument("--x-ticktext", help="tick text on x-axis (only tick mode array) (default %(default)s)", default=[], sticky_default=True, nargs='+', action=ChildAction, parent=inputFileArgument)
 parserPlotAxisOptions.add_argument("--y-tickangle", help="tick angle on y-axis (default %(default)s)", default='auto', sticky_default=True, choices=Range(None, None, ['auto']), action=ChildAction, parent=inputFileArgument)
 parserPlotAxisOptions.add_argument("--x-tickangle", help="tick angle on x-axis (default %(default)s)", default='auto', sticky_default=True, choices=Range(None, None, ['auto']), action=ChildAction, parent=inputFileArgument)
-parserPlotAxisOptions.add_argument("--y-grid-colour", help="set y-grid colour", type=str, default=None, action=ChildAction, parent=inputFileArgument)
-parserPlotAxisOptions.add_argument("--x-grid-colour", help="set x-grid colour", type=str, default=None, action=ChildAction, parent=inputFileArgument)
-parserPlotAxisOptions.add_argument("--y-colour", help="set y-axis colour", type=str, default=None, action=ChildAction, parent=inputFileArgument)
-parserPlotAxisOptions.add_argument("--x-colour", help="set x-axis colour", type=str, default=None, action=ChildAction, parent=inputFileArgument)
+parserPlotAxisOptions.add_argument("--y-grid-colour", help="set y-grid colour", type=escapedStr, default=None, action=ChildAction, parent=inputFileArgument)
+parserPlotAxisOptions.add_argument("--x-grid-colour", help="set x-grid colour", type=escapedStr, default=None, action=ChildAction, parent=inputFileArgument)
+parserPlotAxisOptions.add_argument("--y-colour", help="set y-axis colour", type=escapedStr, default=None, action=ChildAction, parent=inputFileArgument)
+parserPlotAxisOptions.add_argument("--x-colour", help="set x-axis colour", type=escapedStr, default=None, action=ChildAction, parent=inputFileArgument)
 parserPlotAxisOptions.add_argument("--y-line-width", help="set y-axis line width (default %(default)s)", type=float, choices=Range(0, None), default=0, action=ChildAction, parent=inputFileArgument)
 parserPlotAxisOptions.add_argument("--x-line-width", help="set x-axis line width (default %(default)s)", type=float, choices=Range(0, None), default=0, action=ChildAction, parent=inputFileArgument)
-parserPlotAxisOptions.add_argument("--grid-colour", help="set grid colour", type=str, default=None, action=ChildAction, parent=inputFileArgument)
+parserPlotAxisOptions.add_argument("--grid-colour", help="set grid colour", type=escapedStr, default=None, action=ChildAction, parent=inputFileArgument)
 
 parserColourOptions = parser.add_argument_group('colour options')
 parserColourOptions.add_argument("--theme", help="theme to use (all colour options only apply to 'palette')", default='palette', choices=["palette", "plotly", "plotly_white", "plotly_dark", "ggplot2", "seaborn", "simple_white", "none"])
-parserColourOptions.add_argument("--colours", help="define explicit colours (filled up by palette)", default=[], nargs='+', type=str)
+parserColourOptions.add_argument("--colours", help="define explicit colours (filled up by palette)", default=[], nargs='+', type=escapedStr)
 parserColourOptions.add_argument("--palette", help="valid seaborn colour palette (default %(default)s)", type=str, default='ch:s=2.8,rot=0.1,d=0.85,l=0.15')
+parserColourOptions.add_argument("--palette-opacity", help="palette colour opacity (default %(default)s)", type=float, choices=Range(0, 1.0), default=1.0)
 parserColourOptions.add_argument("--palette-reverse", help="reverse colour palette", action="store_true", default=False)
 parserColourOptions.add_argument("--palette-count", help="manually set the number of colours to generate from the palette", type=int, choices=Range(1, None), default=None)
 parserColourOptions.add_argument("--palette-start", help="set the palette start index (default %(default)s)", type=int, default=0, choices=Range(0, None))
-parserColourOptions.add_argument("--subplot-colours", help="specify explicit subplot colours (sets default colour cycle to subplot)", type=str, default=[], nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserColourOptions.add_argument("--subplot-colours", help="specify explicit subplot colours (sets default colour cycle to subplot)", type=escapedStr, default=[], nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserColourOptions.add_argument("--subplot-palette", help="valid seaborn colour palette used for this subplot (sets default colour cycle to subplot)", type=str, default=None, sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserColourOptions.add_argument("--subplot-palette-opacity", help="subplot palette opacity", type=float, choices=Range(0, 1.0), default=None, sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserColourOptions.add_argument("--subplot-palette-reverse", help="reverse subplot colour palette", sub_action="store_true", default=False, nargs=0, sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserColourOptions.add_argument("--subplot-palette-count", help="manually set the number of colours to generate from the subplot palette (set default colour cycle to subplot)", type=int, choices=Range(1, None), default=None, sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserColourOptions.add_argument("--subplot-palette-start", help="set the subplot palette start index (default 0)", type=int, default=None, choices=Range(0, None), sticky_default=True, action=ChildAction, parent=inputFileArgument)
@@ -870,20 +881,20 @@ parserColourOptions.add_argument("--colour-debug", help="print generated colour 
 parserColourOptions.add_argument("--per-trace-colours", help="one colour for each trace (default)", action='store_true', default=False)
 parserColourOptions.add_argument("--per-frame-colours", help="one colour for each dataframe", action='store_true', default=False)
 parserColourOptions.add_argument("--per-input-colours", help="one colour for each input file", action='store_true', default=False)
-parserColourOptions.add_argument("--font-colour", help="font colour (default %(default)s)", type=str, default='#000000')
-parserColourOptions.add_argument("--background-colour", help="set background colour  (default 'rgba(255, 255, 255, 0)')", type=str, default=None)
+parserColourOptions.add_argument("--font-colour", help="font colour (default %(default)s)", type=escapedStr, default='#000000')
+parserColourOptions.add_argument("--background-colour", help="set background colour  (default 'rgba(255, 255, 255, 0)')", type=escapedStr, default=None)
 
 parserPlotGlobalOptions = parser.add_argument_group('plot global options')
 
-parserPlotGlobalOptions.add_argument("--master-title", help="plot master title", type=str, default=None)
-parserPlotGlobalOptions.add_argument("--x-master-title", help="x-axis master title", type=str, default=None)
-parserPlotGlobalOptions.add_argument("--y-master-title", help="y-axis master title", type=str, default=None)
+parserPlotGlobalOptions.add_argument("--master-title", help="plot master title", type=escapedStr, default=None)
+parserPlotGlobalOptions.add_argument("--x-master-title", help="x-axis master title", type=escapedStr, default=None)
+parserPlotGlobalOptions.add_argument("--y-master-title", help="y-axis master title", type=escapedStr, default=None)
 parserPlotGlobalOptions.add_argument("--x-share", help="share subplot x-axis (default %(default)s)", default=False, action="store_true")
 parserPlotGlobalOptions.add_argument("--y-share", help="share subplot y-axis (default %(default)s)", default=False, action="store_true")
 parserPlotGlobalOptions.add_argument("--vertical-spacing", type=float, help="vertical spacing between subplots", default=None, choices=Range(0, 1))
 parserPlotGlobalOptions.add_argument("--horizontal-spacing", type=float, help="horizontal spacing between subplots", default=None, choices=Range(0, 1))
 parserPlotGlobalOptions.add_argument("--font-size", help="font size (default %(default)s)", type=int, default=12)
-parserPlotGlobalOptions.add_argument("--font-family", help="font family (default %(default)s)", type=str, default='"Open Sans", verdana, arial, sans-serif')
+parserPlotGlobalOptions.add_argument("--font-family", help="font family (default %(default)s)", type=escapedStr, default='"Open Sans", verdana, arial, sans-serif')
 
 parserPlotGlobalOptions.add_argument("--legend", help="quick setting the legend position (default %(default)s)", type=str, choices=['topright', 'topcenter', 'topleft', 'bottomright', 'bottomcenter', 'bottomleft', 'middleleft', 'center', 'middleright', 'belowleft', 'belowcenter', 'belowright', 'aboveleft', 'abovecenter', 'aboveright', 'righttop', 'rightmiddle', 'rightbottom', 'lefttop', 'leftmiddle', 'leftbottom'], default='righttop')
 parserPlotGlobalOptions.add_argument("--legend-x", help="x legend position (-2 to 3)", type=float, choices=Range(-2, 3), default=None)
@@ -1151,17 +1162,17 @@ for input in args.input:
         del buf
     gc.collect()
 
-    selectMode = input['args'].select_mode
-    filterMode = input['args'].filter_mode
-    sortFunction = input['args'].sort_function
-    addAt = input['args'].add_at
-    addFunction = input['args'].add_function
-    applyMode = input['args'].apply_mode
-    applyParameter = input['args'].apply_parameter
-    applyFunction = input['args'].apply_function
-    groupFunction = input['args'].group_function
-    sortOrder = input['args'].sort_order
-    outputPrecision = None if input['args'].output_precision == 'default' else int(input['args'].output_precision)
+    selectMode = 'all'
+    filterMode = '='
+    sortFunction = 'mean'
+    addAt = 'front'
+    addFunction = 'mean'
+    applyMode = 'normal'
+    applyParameter = '1'
+    applyFunction = 'mean'
+    groupFunction = 'sum'
+    sortOrder = 'desc'
+    outputPrecision = None
 
     focusedFrames = list(range(len(inputFrames)))
 
@@ -1484,7 +1495,8 @@ for input in args.input:
             'palette_count': args.palette_count,
             'palette_local': inputOptions.colour_cycle == 'subplot',
             'palette_reverse': args.palette_reverse,
-            'palette_index': args.palette_start
+            'palette_index': args.palette_start,
+            'palette_opacity': args.palette_opacity
         })
 
     subplotGridDefinition[inputOptions.row][inputOptions.col]['rowspan'] = max(inputOptions.rowspan, subplotGridDefinition[inputOptions.row][inputOptions.col]['rowspan'])
@@ -1502,6 +1514,8 @@ for input in args.input:
         subplotGridDefinition[inputOptions.row][inputOptions.col]['palette_count'] = inputOptions.subplot_palette_count
     if inputOptions.subplot_palette_start is not None:
         subplotGridDefinition[inputOptions.row][inputOptions.col]['palette_index'] = inputOptions.subplot_palette_start
+    if inputOptions.subplot_palette_opacity is not None:
+        subplotGridDefinition[inputOptions.row][inputOptions.col]['palette_opacity'] = inputOptions.subplot_palette_opacity
 
     inputOptions.subplotTraceIndex = subplotGridDefinition[inputOptions.row][inputOptions.col]['traces']
     subplotGridDefinition[inputOptions.row][inputOptions.col]['traces'] += inputOptions.traceCount
@@ -1563,7 +1577,7 @@ for r in range(1, int(subplotGrid[1]['max']) + 1):
                 else:
                     subplot['palette_count'] = totalTraceCount if args.per_trace_colours else totalFrameCount if args.per_frame_colour else totalInputCount
                 subplot['palette_count'] = max(0, subplot['palette_count'] - len(subplot['colours']))
-            subplot['colours'].extend([f'rgb({int(255*r)}, {int(255*g)}, {int(255*b)})' for (r, g, b) in seaborn.color_palette(subplot['palette'], subplot['palette_count'])])
+            subplot['colours'].extend([f"rgba({int(255*r)}, {int(255*g)}, {int(255*b)}, {subplot['palette_opacity']})" for (r, g, b) in seaborn.color_palette(subplot['palette'], subplot['palette_count'])])
             if subplot['palette_reverse']:
                 subplot['colours'].reverse()
             if args.theme == 'palette' and args.colour_debug:

@@ -1,7 +1,13 @@
-.PHONY: pip tests plots clean .check_version
+.PHONY: pip wheel pip_upload tests plots clean .check_version
 
-pip: clean .check_version
+pip: clean .check_version 
+	$(MAKE) wheel
+	$(MAKE) pip_upload
+
+wheel:
 	python setup.py bdist_wheel
+
+pip_upload:
 	twine upload dist/*
 
 tests plots:
