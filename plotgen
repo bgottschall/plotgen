@@ -38,7 +38,7 @@ import xopen
 import seaborn
 
 __prog__ = 'plotgen'
-__version__ = '0.3.0'
+__version__ = '0.4.0'
 __url__ = 'https://github.com/bgottschall/plotgen'
 
 
@@ -777,6 +777,7 @@ parserPlotOptions.add_argument("--line-colour", help="set line colour  (default 
 parserPlotOptions.add_argument("--opacity", help="colour opacity (default 0.8 for overlay modes, else 1.0)", choices=Range(0, 1, ['auto']), action=ChildAction, parent=inputFileArgument)
 parserPlotOptions.add_argument("--offsetgroups", help="set explicit offsetgroups for e.g. bar charts", type=int, default='auto', nargs='+', choices=Range(0, None, ['auto']), sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserPlotOptions.add_argument("--legend-entries", help="choose which entries are shown in legend", choices=['all', 'unique', 'none'], default=None, action=ChildAction, parent=inputFileArgument)
+parserPlotOptions.add_argument("--distribution-mode", help="define whether the input data is parsed as binned or aggregated data (e.g. histogramm data) for appropriate plots (box and violin)", type=str, choices=['normal', 'aggregated'], default='normal', sticky_default=True, action=ChildAction, parent=inputFileArgument)
 
 parserLinePlotOptions = parser.add_argument_group('line plot options')
 parserLinePlotOptions.add_argument("--line-mode", choices=['none', 'lines', 'markers', 'text', 'lines+markers', 'lines+text', 'markers+text', 'lines+markers+text'], help="choose linemode (default %(default)s)", default='lines', action=ChildAction, parent=inputFileArgument)
@@ -1662,6 +1663,7 @@ currentInputIndex = None
 frameIndex = 0
 traceIndex = 0
 inputIndex = 0
+
 for input in data:
     options = input['options']
     frames = input['frames']
@@ -1682,6 +1684,18 @@ for input in data:
         frame = frame.replace({numpy.nan: None})
         frame.index = frame.index.to_series().replace({numpy.nan: None})
         frameTraceIndex = 0
+
+        expandDistribution = None
+        if options.distribution_mode == 'aggregated':
+            if options.plot in ['violin', 'box']:
+                if not all(frame.index.map(isFloat)):
+                    if not args.quiet:
+                        print(f"WARNING: cannot expand distribution for non numeric index in frame {inputFrameIndex}", file=sys.stderr)
+                else:
+                    expandDistribution = frame.index.map(float).to_list()
+            else:
+                if not args.quiet:
+                    print(f"WARNING: distribution mode aggregated has no effect on plot type '{options.plot}' in frame {inputFrameIndex}", file=sys.stderr)
 
         _categories = None
         for specialFrameColumn in options.frameSpecialColumns:
@@ -1754,8 +1768,13 @@ for input in data:
                     else:
                         xdata = [_categories, xdata]
             else:  # Box and Violin
-                data = [x for x in frame.iloc[:, colIndex].values.tolist() if x is not None]
-                index = f"['{col}'] * {len(data)}"
+                rawData = frame.iloc[:, colIndex].values
+                data = [x for x in rawData if x is not None]
+                if expandDistribution is not None:
+                    localExpand = [x for (x, y) in zip(expandDistribution, rawData) if y is not None]
+                    # Expansion is using ceiling to avoid dropping of data points. Side effect is that it might lift the distribution a little bit up
+                    data = list(numpy.repeat(localExpand, numpy.ceil(data).astype(numpy.int64)))
+                index = None
                 ydata = index if not options.vertical else data
                 xdata = index if options.vertical else data
                 updateRange(plotRange, [xdata, ydata])
