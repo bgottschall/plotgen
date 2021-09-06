@@ -38,7 +38,7 @@ import xopen
 import seaborn
 
 __prog__ = 'plotgen'
-__version__ = '0.4.0'
+__version__ = '0.4.1'
 __url__ = 'https://github.com/bgottschall/plotgen'
 
 
@@ -590,8 +590,8 @@ class DataframeActions:
         for frame in dataframes:
             if rowIdx == 'columns':
                 for v in frame.columns.unique():
-                    columnIdx = DataframeActions.getColumnIdx(frame, v, 'all', False)
-                    newFrames.append(DataframeActions.filterColumnsByIdx(frame, columnIdx))
+                    columnIds = DataframeActions.getColumnIds(frame, v, 'all', False)
+                    newFrames.append(DataframeActions.selectColumnsByIds(frame, columnIds))
             else:
                 rowIdx = int(rowIdx)
                 for v in frame.iloc[rowIdx, :].unique():
@@ -606,8 +606,8 @@ class DataframeActions:
         for frame in dataframes:
             if columnIdx == 'index':
                 for v in frame.index.unique():
-                    rowIdx = DataframeActions.getRowIdx(frame, v, 'all', False)
-                    newFrames.append(DataframeActions.filterRowsByIdx(frame, rowIdx))
+                    rowIds = DataframeActions.getRowIds(frame, v, 'all', False)
+                    newFrames.append(DataframeActions.selectRowsByIds(frame, rowIds))
             else:
                 columnIdx = int(columnIdx)
                 for v in frame.iloc[:, columnIdx].unique():
@@ -777,7 +777,7 @@ parserPlotOptions.add_argument("--line-colour", help="set line colour  (default 
 parserPlotOptions.add_argument("--opacity", help="colour opacity (default 0.8 for overlay modes, else 1.0)", choices=Range(0, 1, ['auto']), action=ChildAction, parent=inputFileArgument)
 parserPlotOptions.add_argument("--offsetgroups", help="set explicit offsetgroups for e.g. bar charts", type=int, default='auto', nargs='+', choices=Range(0, None, ['auto']), sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserPlotOptions.add_argument("--legend-entries", help="choose which entries are shown in legend", choices=['all', 'unique', 'none'], default=None, action=ChildAction, parent=inputFileArgument)
-parserPlotOptions.add_argument("--distribution-mode", help="define whether the input data is parsed as binned or aggregated data (e.g. histogramm data) for appropriate plots (box and violin)", type=str, choices=['normal', 'aggregated'], default='normal', sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserPlotOptions.add_argument("--distribution-mode", help="define whether the input data is parsed as binned or aggregated data (e.g. histogramm data) for appropriate plots (box and violin)", type=str, choices=['normal', 'aggregated'], default='normal', action=ChildAction, parent=inputFileArgument)
 
 parserLinePlotOptions = parser.add_argument_group('line plot options')
 parserLinePlotOptions.add_argument("--line-mode", choices=['none', 'lines', 'markers', 'text', 'lines+markers', 'lines+text', 'markers+text', 'lines+markers+text'], help="choose linemode (default %(default)s)", default='lines', action=ChildAction, parent=inputFileArgument)
@@ -799,7 +799,7 @@ parserBarPlotOptions.add_argument("--bar-gap", help="set bar gap (default $(defa
 parserBarPlotOptions.add_argument("--bar-group-gap", help="set bar group gap (default $(default)s)", choices=Range(0, 1), default=0)
 
 parserViolinPlotOptions = parser.add_argument_group('violin plot options')
-parserViolinPlotOptions.add_argument("--violin-mode", help="choose violinmode (default %(default)s)", choices=['overlay', 'group', 'halfoverlay', 'halfgroup', 'halfhalf'], default='overlay')
+parserViolinPlotOptions.add_argument("--violin-mode", help="choose violinmode (default %(default)s)", choices=['overlay', 'group', 'halfoverlay', 'halfgroup', 'halfhalf', 'poshalfgroup', 'neghalfgroup', 'poshalf', 'neghalf'], default='overlay', action=ChildAction, parent=inputFileArgument)
 parserViolinPlotOptions.add_argument("--violin-mean", help="choose violin mean (default %(default)s)", choices=['none', 'line', 'box'], default='none', action=ChildAction, parent=inputFileArgument)
 parserViolinPlotOptions.add_argument("--violin-points", help="set points mode for (default %(default)s)", type=str, default='none', choices=['all', 'outliers', 'suspectedoutliers', 'none'], action=ChildAction, parent=inputFileArgument)
 parserViolinPlotOptions.add_argument("--violin-jitter", help="set jitter for violin points (default %(default)s)", type=float, default=0, choices=Range(0, 1), action=ChildAction, parent=inputFileArgument)
@@ -928,6 +928,7 @@ parserOutputOptions.add_argument("-v", "--version", action="version", version='%
 
 args = parser.parse_args()
 
+violinMode = 'overlay'
 commentColour = ''
 commentBackgroundColour = ''
 
@@ -946,6 +947,7 @@ if (not args.per_trace_colours and not args.per_frame_colours and not args.per_i
 elif (args.per_frame_colours):
     args.per_input_colours = False
 
+
 for input in args.input:
     options = input['args']
     # options.ignore_icolumns = list(set(options.ignore_icolumns))
@@ -955,7 +957,7 @@ for input in args.input:
     options.frameSpecialColumns = [options.special_column_prefix + x for x in frameSpecialColumns]
 
     if (options.opacity == 'auto' and ((options.plot == 'box' and 'overlay' in args.box_mode) or
-                                       (options.plot == 'violin' and 'overlay' in args.violin_mode) or
+                                       (options.plot == 'violin' and 'overlay' in options.violin_mode) or
                                        (options.plot == 'bar' and 'overlay' in args.bar_mode))):
         options.opacity = 0.8
     elif options.opacity == 'auto':
@@ -1013,6 +1015,8 @@ for input in args.input:
             options.y_range_from = 0
         if options.x_range_to is not None and options.x_range_from is None:
             options.x_range_from = 0
+
+    violinMode = options.violin_mode
 
 args.bar_gap = None if args.bar_gap == 'auto' else float(args.bar_gap)
 args.master_title = f"'{args.master_title}'" if args.master_title is not None else None
@@ -1439,13 +1443,13 @@ for input in args.input:
                     if optionName == 'split_icolumn':
                         newFrames = DataframeActions.splitFramesByColumnIdx([frame], optionValue)
                     elif optionName == 'split_column':
-                        columnIdx = DataframeActions.getColumnIdx(frame, optionValue, selectMode)[0]
-                        newFrames = DataframeActions.splitFramesByColumnIdx([frame], columnIdx)
+                        columnIds = DataframeActions.getColumnIds(frame, optionValue, selectMode)
+                        newFrames = DataframeActions.splitFramesByColumnIdx([frame], columnIds[0])
                     elif optionName == 'split_irow':
                         newFrames = DataframeActions.splitFramesByRowIdx([frame], optionValue)
                     elif optionName == 'split_row':
-                        rowIdx = DataframeActions.getRowIdx(frame, optionValue, selectMode)[0]
-                        newFrames = DataframeActions.splitFramesByRowIdx([frame], rowIdx)
+                        rowIds = DataframeActions.getRowIds(frame, optionValue, selectMode)
+                        newFrames = DataframeActions.splitFramesByRowIdx([frame], rowIds[0])
                     newFocusedFrames.extend(range(len(newInputFrames), len(newInputFrames) + len(newFrames)))
                     for newFrame in newFrames:
                         newOptions = copy.deepcopy(inputOptions)
@@ -1574,9 +1578,9 @@ for r in range(1, int(subplotGrid[1]['max']) + 1):
             subplot = subplotGridDefinition[r][c]
             if subplot['palette_count'] is None:
                 if subplot['palette_local']:
-                    subplot['palette_count'] = subplot['traces'] if args.per_trace_colours else subplot['frames'] if args.per_frame_colour else 1
+                    subplot['palette_count'] = subplot['traces'] if args.per_trace_colours else subplot['frames'] if args.per_frame_colours else 1
                 else:
-                    subplot['palette_count'] = totalTraceCount if args.per_trace_colours else totalFrameCount if args.per_frame_colour else totalInputCount
+                    subplot['palette_count'] = totalTraceCount if args.per_trace_colours else totalFrameCount if args.per_frame_colours else totalInputCount
                 subplot['palette_count'] = max(0, subplot['palette_count'] - len(subplot['colours']))
             subplot['colours'].extend([f"rgba({int(255*r)}, {int(255*g)}, {int(255*b)}, {subplot['palette_opacity']})" for (r, g, b) in seaborn.color_palette(subplot['palette'], subplot['palette_count'])])
             if subplot['palette_reverse']:
@@ -1921,10 +1925,10 @@ fig.add_trace(go.Scatter(
 ), col={options.col}, row={options.row}, secondary_y={options.y_secondary})
 """)
             elif options.plot == 'violin':
-                if args.violin_mode == 'halfhalf':
+                if options.violin_mode == 'halfhalf':
                     side = 'negative' if inputTraceIndex % 2 == 0 else 'positive'
-                elif args.violin_mode[:4] == 'half':
-                    side = 'positive'
+                elif options.violin_mode.endswith('half') or options.violin_mode.endswith('halfgroup'):
+                    side = 'negative' if options.violin_mode.startswith('neg') else 'positive'
                 else:
                     side = 'both'
                 markercolour = options.line_colour
@@ -2021,14 +2025,14 @@ fig.add_trace(go.Violin(
     plotScript.write(f"{'# ' if not options.x_tick_hide else ''}fig.update_xaxes(showticklabels=False, col={options.col}, row={options.row})\n")
     plotScript.write("\n")
 
-if (args.violin_mode == 'halfgroup'):
-    args.violin_mode = 'group'
-elif (args.violin_mode[:4] == 'half'):
-    args.violin_mode = 'overlay'
+if violinMode.endswith('halfgroup'):
+    violinMode = 'group'
+elif violinMode.endswith('half'):
+    violinMode = 'overlay'
 
 plotScript.write('# Global modes and paramters:\n')
 plotScript.write(f"fig.update_layout(title={args.master_title})\n")
-plotScript.write(f"fig.update_layout(barmode='{args.bar_mode}', boxmode='{args.box_mode}', violinmode='{args.violin_mode}')\n")
+plotScript.write(f"fig.update_layout(barmode='{args.bar_mode}', boxmode='{args.box_mode}', violinmode='{violinMode}')\n")
 plotScript.write(f"fig.update_layout(bargap={args.bar_gap}, bargroupgap={args.bar_group_gap}, boxgap={args.box_gap}, boxgroupgap={args.box_group_gap}, violingap={args.violin_gap}, violingroupgap={args.violin_group_gap})\n")
 
 plotScript.write("\n# Layout Legend\n")
