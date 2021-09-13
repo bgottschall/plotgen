@@ -8,7 +8,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name='plotgen',
-    version='0.4.1',
+    version='0.4.2',
     scripts=['plotgen'],
     author="Björn Gottschall",
     author_email="github.mail@bgottschall.de",

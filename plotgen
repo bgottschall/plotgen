@@ -38,7 +38,7 @@ import xopen
 import seaborn
 
 __prog__ = 'plotgen'
-__version__ = '0.4.1'
+__version__ = '0.4.2'
 __url__ = 'https://github.com/bgottschall/plotgen'
 
 
@@ -1170,7 +1170,7 @@ for input in args.input:
     selectMode = 'all'
     filterMode = '='
     sortFunction = 'mean'
-    addAt = 'front'
+    addAt = 'back'
     addFunction = 'mean'
     applyMode = 'normal'
     applyParameter = '1'
