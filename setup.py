@@ -8,7 +8,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name='plotgen',
-    version='0.4.2',
+    version='0.5.0',
     scripts=['plotgen'],
     author="Björn Gottschall",
     author_email="github.mail@bgottschall.de",
@@ -23,6 +23,7 @@ setuptools.setup(
         "Operating System :: OS Independent",
     ],
     install_requires=[
+        'argcomplete>=1.12.3',
         'plotly>=5.1.0',
         'numpy>=1.21.1',
         'pandas>=1.3.1',
