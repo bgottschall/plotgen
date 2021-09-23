@@ -40,7 +40,7 @@ import xopen
 import seaborn
 
 __prog__ = 'plotgen'
-__version__ = '0.5.0'
+__version__ = '0.5.1'
 __url__ = 'https://github.com/bgottschall/plotgen'
 
 
@@ -756,7 +756,7 @@ parserFileOptions.add_argument("--split-row", help="split frame along this row",
 parserFileOptions.add_argument("--focus-frames", help="set the frame focus for file options (default all)", type=SliceType(), default=[], nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--defocus-frames", help="remove frames from focus for file options", type=SliceType(), default=[], nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
 
-parserFileOptions.add_argument("--output-precision", help="set explicit output prevision for text and console output (default %(default)s)", type=str, default='default', choices=Range(0, None, ['default']), action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--print-precision", help="set explicit output prevision for text and console output (default %(default)s)", type=str, default='default', choices=Range(0, None, ['default']), action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--file", help="save data frames to text files (one file per frame)", default=None, type=str, nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--pickle", help="pickle data frames to file (one file containing all frames)", default=None, type=str, sticky_default=True, action=ChildAction, parent=inputFileArgument)
 
@@ -1185,7 +1185,7 @@ for input in args.input:
     focusedFrames = list(range(len(inputFrames)))
 
     for (optionName, optionValue) in input['args'].ordered_args:
-        multiFrameActions = ['output_precision', 'select_mode', 'filter_mode', 'sort_function', 'sort_order', 'add_at', 'add_function', 'apply_mode', 'apply_function', 'group_function', 'apply_parameter', 'join', 'file', 'pickle', 'split_column', 'split_icolumn', 'split_row', 'split_irow', 'focus_frames', 'defocus_frames']
+        multiFrameActions = ['print_precision', 'select_mode', 'filter_mode', 'sort_function', 'sort_order', 'add_at', 'add_function', 'apply_mode', 'apply_function', 'group_function', 'apply_parameter', 'join', 'file', 'pickle', 'split_column', 'split_icolumn', 'split_row', 'split_irow', 'focus_frames', 'defocus_frames']
         if optionName not in multiFrameActions:
             for _index, (frameOptions, frame) in enumerate(inputFrames):
                 if (_index) not in focusedFrames:
@@ -1216,7 +1216,7 @@ for input in args.input:
                     rowIds = DataframeActions.getRowIds(frame, optionValue, selectMode, True)
                     frame = DataframeActions.dropRowsByIds(frame, rowIds)
                 elif optionName == 'ignore_irows':
-                    rowIds = DataframeActions.sliceToColumnIds(frame, optionValue)
+                    rowIds = DataframeActions.sliceToRowIds(frame, optionValue)
                     frame = DataframeActions.dropRowsByIds(frame, rowIds)
                 elif optionName == 'select_columns':
                     columnIds = DataframeActions.getColumnIds(frame, optionValue, selectMode, True)
@@ -1398,7 +1398,7 @@ for input in args.input:
                 for f in getSliceTypeIds(range(len(inputFrames)), optionValue):
                     if f in focusedFrames:
                         focusedFrames.remove(f)
-            elif optionName == 'output_precision':
+            elif optionName == 'print_precision':
                 outputPrecision = None if optionValue == 'default' else int(optionValue)
             elif optionName == 'select_mode':
                 selectMode = optionValue
