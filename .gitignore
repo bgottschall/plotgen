@@ -2,5 +2,6 @@ build
 dist
 plotgen.egg-info
 __pycache__
+setup.py
 tests/tests.out
 tests/testdata.csv

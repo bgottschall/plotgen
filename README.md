@@ -1,7 +1,6 @@
 # plotgen: easy data parsing and plot script generator
 
 [![PyPI Latest Release](https://img.shields.io/pypi/v/plotgen.svg)](https://pypi.org/project/plotgen/)
-[![Package Status](https://img.shields.io/pypi/status/plotgen.svg)](https://pypi.org/project/plotgen/)
 [![License](https://img.shields.io/pypi/l/plotgen.svg)](https://github.com/bgottschall/plotgen/blob/master/LICENSE)
 
 ## About

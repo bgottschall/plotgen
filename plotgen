@@ -40,7 +40,7 @@ import xopen
 import seaborn
 
 __prog__ = 'plotgen'
-__version__ = '0.5.1'
+__version__ = '0.5.2'
 __url__ = 'https://github.com/bgottschall/plotgen'
 
 
@@ -762,7 +762,7 @@ parserFileOptions.add_argument("--pickle", help="pickle data frames to file (one
 
 # Per File Plotting Arguments:
 parserPlotOptions = parser.add_argument_group('plot options')
-parserPlotOptions.add_argument('--plot', choices=['line', 'bar', 'box', 'violin'], help='plot type', default='line', action=ChildAction, parent=inputFileArgument)
+parserPlotOptions.add_argument('--plot', choices=['line', 'bar', 'box', 'violin', 'heatmap'], help='plot type', default='line', action=ChildAction, parent=inputFileArgument)
 parserPlotOptions.add_argument("--orientation", help="set plot orientation", default='auto', choices=['vertical', 'v', 'horizontal', 'h', 'auto'], action=ChildAction, parent=inputFileArgument)
 parserPlotOptions.add_argument("--title", help="subplot title", type=escapedStr, default=None, sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserPlotOptions.add_argument("--use-name", help="use name for traces", type=escapedStr, default=None, sticky_default=True, action=ChildAction, parent=inputFileArgument)
@@ -922,11 +922,11 @@ parserPlotGlobalOptions.add_argument("--width", help="plot width", type=int, def
 parserPlotGlobalOptions.add_argument("--height", help="plot height", type=int)
 
 parserOutputOptions = parser.add_argument_group('output options')
-parserOutputOptions.add_argument("--script", help="save self-contained plotting script", type=str, default=None)
 parserOutputOptions.add_argument("--browser", help="open plot in the browser", default=False, action="store_true")
 parserOutputOptions.add_argument("-o", "--output", help="export plot to file (html, pdf, svg, png, py, ...)", default=[], nargs='+')
 parserOutputOptions.add_argument("-q", "--quiet", action="store_true", help="no warnings and don't open output file", default=False)
 parserOutputOptions.add_argument("-v", "--version", action="version", version='%(prog)s ' + __version__ + ', available at ' + __url__)
+parserOutputOptions.add_argument("--debug", action="store_true", help="output some debug informations", default=False)
 
 argcomplete.autocomplete(parser)
 args = parser.parse_args()
@@ -1113,6 +1113,9 @@ for input in args.input:
         if not os.path.exists(filename):
             raise Exception(f'Could not find file {filename}!')
 
+        if args.debug:
+            print(f"DEBUG: reading in {filename}", file=sys.stderr)
+
         buf = xopen.xopen(filename, mode='rb').read()
 
         try:
@@ -1140,7 +1143,7 @@ for input in args.input:
                 inputFrames.append((options, frame))
         else:
             # Do not use pandas own comment option, as we only want to exclude lines that start with a comment character to allow it in the data
-            if options.comment:
+            if len(options.comment) > 0:
                 buf = b''.join([line for line in io.BytesIO(buf).readlines() if not line.decode().strip(' ').startswith(options.comment)])
 
             frame = pandas.read_csv(io.BytesIO(buf),
@@ -1168,7 +1171,9 @@ for input in args.input:
             inputOptions.frameCount += 1
 
         del buf
-    gc.collect()
+        gc.collect()
+        if args.debug:
+            print("DEBUG: done reading file", file=sys.stderr)
 
     selectMode = 'all'
     filterMode = '='
@@ -1462,6 +1467,10 @@ for input in args.input:
                 focusedFrames = newFocusedFrames
                 inputFrames = newInputFrames
 
+        if args.debug:
+            print(f"DEBUG: applied {optionName}", file=sys.stderr)
+        gc.collect()
+
     defocusedFrames = [i for i in range(len(inputFrames)) if i not in focusedFrames]
     if not args.quiet and len(defocusedFrames) > 0:
         print(f'WARNING: {len(defocusedFrames)} frames are defocused and will be ignored', file=sys.stderr)
@@ -1531,25 +1540,28 @@ for input in args.input:
 
     data.append({'options': copy.deepcopy(inputOptions), 'frames': [f.where(pandas.notnull(f), None) for f in [f for i, (_, f) in enumerate(inputFrames) if i in focusedFrames]]})
 
+    gc.collect()
 
+
+scriptPath = None
+secondaryScriptPaths = []
 # Separate python outputs from actual output put the first script
-# into args.script and all others into scriptOutputs, args.script is
-# out master all others are secondary
-secondaryScripts = []
+# into scriptPath and all others into secondaryScriptPaths,
+# scriptPath is master all others are secondary
 for x in args.output:
     if x.lower().endswith('.py'):
-        if not args.script:
-            args.script = x
+        if scriptPath is None:
+            scriptPath = x
         else:
-            secondaryScripts.append(x)
+            secondaryScriptPaths.append(x)
 
 # Remove scripts from output
 args.output = [x for x in args.output if not x.lower().endswith('.py')]
 
 
-if doneSomething and not args.browser and len(args.output) == 0 and not args.script:
+if doneSomething and not args.browser and len(args.output) == 0 and scriptPath is None:
     exit(0)
-elif len(args.output) == 0 and not args.script:
+elif len(args.output) == 0 and scriptPath is None:
     args.browser = True
 
 if totalTraceCount == 0:
@@ -1558,8 +1570,8 @@ if totalTraceCount == 0:
     exit(0)
 
 # Plotting script will be executed in this path context
-if args.script:
-    scriptContext = os.path.abspath(os.path.dirname(args.script))
+if scriptPath is not None:
+    scriptContext = os.path.abspath(os.path.dirname(scriptPath))
 else:
     scriptContext = os.path.abspath(os.getcwd())
 
@@ -1586,8 +1598,14 @@ for r in range(1, int(subplotGrid[1]['max']) + 1):
                     subplot['palette_count'] = totalTraceCount if args.per_trace_colours else totalFrameCount if args.per_frame_colours else totalInputCount
                 subplot['palette_count'] = max(0, subplot['palette_count'] - len(subplot['colours']))
             subplot['colours'].extend([f"rgba({int(255*r)}, {int(255*g)}, {int(255*b)}, {subplot['palette_opacity']})" for (r, g, b) in seaborn.color_palette(subplot['palette'], subplot['palette_count'])])
+
+            # Only required for continuous colour scales
+            seaborn_cmap = seaborn.color_palette(subplot['palette'], as_cmap=True)
+            subplot['cmap'] = [f'rgb({r}, {g}, {b})' for (r, g, b) in [map(numpy.uint8, 255 * numpy.array(seaborn_cmap(i)[:3])) for i in numpy.arange(0, 1.0, (1.0 / 255))]]
+
             if subplot['palette_reverse']:
                 subplot['colours'].reverse()
+
             if args.theme == 'palette' and args.colour_debug:
                 print(f'    subplot @ [{r}, {c}, local({subplot["palette_local"]})]: ' + ' '.join(subplot['colours']))
 globalPaletteIndex = args.palette_start
@@ -1595,12 +1613,12 @@ globalPaletteIndex = args.palette_start
 legendEntries = []
 
 plotFd = None
-if (args.script is None):
+if (scriptPath is None):
     args.script_only = False
     plotFd, plotScriptName = tempfile.mkstemp()
     plotScript = open(plotScriptName, 'w+')
 else:
-    plotScriptName = os.path.abspath(args.script)
+    plotScriptName = os.path.abspath(scriptPath)
     plotScript = open(plotScriptName, 'w+')
 
 plotScript.write(f"""#!/usr/bin/env python3
@@ -1713,115 +1731,116 @@ for input in data:
                 if (colName == options.special_column_prefix + 'category') and _categories is None:
                     _categories = ['' if x is None else x for x in frame.iloc[:, colIndex].values.tolist()]
 
-        for colIndex, _ in enumerate(frame.columns):
-            col = str(frame.columns[colIndex])
-            if col in options.traceSpecialColumns or col in options.frameSpecialColumns:
-                continue
+        if options.plot not in ['heatmap']:
+            for colIndex, _ in enumerate(frame.columns):
+                col = str(frame.columns[colIndex])
+                if col in options.traceSpecialColumns or col in options.frameSpecialColumns:
+                    continue
 
-            if options.trace_colours and frameTraceIndex < len(options.trace_colours):
-                fillcolour = options.trace_colours[frameTraceIndex]
-            else:
-                colourIndex = (subplot['palette_index'] if subplot['palette_local'] else globalPaletteIndex) % len(subplot['colours'])
-                fillcolour = subplot['colours'][colourIndex]
-            markercolour = options.line_colour
-
-            _errors_symmetric = True
-            _errors_pos = None
-            _errors_neg = None
-            _bases = None
-            _labels = None
-            _colours = None
-            for nextColIndex in range(colIndex + 1, colIndex + 1 + len(options.traceSpecialColumns) if colIndex + 1 + len(options.traceSpecialColumns) <= len(frame.columns) else len(frame.columns)):
-                nextCol = str(frame.columns[nextColIndex])
-                if (nextCol not in options.traceSpecialColumns):
-                    break
-                if (nextCol == options.special_column_prefix + 'error') and (_errors_pos is None):
-                    _errors_pos = [x if (x is not None) else 0 for x in frame.iloc[:, nextColIndex].values.tolist()]
-                elif (nextCol == options.special_column_prefix + 'error+') and (_errors_pos is None):
-                    _errors_symmetric = False
-                    _errors_pos = [x if (x is not None) else 0 for x in frame.iloc[:, nextColIndex].values.tolist()]
-                elif (nextCol == options.special_column_prefix + 'error-') and (_errors_neg is None):
-                    _errors_symmetric = False
-                    _errors_neg = [x if (x is not None) else 0 for x in frame.iloc[:, nextColIndex].values.tolist()]
-                elif (nextCol == options.special_column_prefix + 'offset') and (_bases is None):
-                    _bases = [x if (x is not None) else 0 for x in frame.iloc[:, nextColIndex].values.tolist()]
-                elif (nextCol == options.special_column_prefix + 'label') and (_labels is None):
-                    _labels = frame.iloc[:, nextColIndex].values.tolist()
-                elif (nextCol == options.special_column_prefix + 'colour') and (_colours is None) and (frameTraceIndex >= len(options.trace_colours)):
-                    _colours = frame.iloc[:, nextColIndex].values.tolist()
-                    _colours = [c if c is not None else fillcolour for c in _colours]
-
-            if (options.plot == 'line'):
-                ydata = frame.iloc[:, colIndex].values.tolist() if not options.vertical else list(frame.index)
-                xdata = frame.iloc[:, colIndex].values.tolist() if options.vertical else list(frame.index)
-                updateRange(plotRange, [xdata, ydata])
-            elif (options.plot == 'bar'):
-                ydata = frame.iloc[:, colIndex].tolist() if options.vertical else list(frame.index)
-                xdata = frame.iloc[:, colIndex].tolist() if not options.vertical else list(frame.index)
-                if _bases is not None:
-                    rxdata = xdata
-                    rydata = ydata
-                    if (options.horizontal):
-                        rxdata = [a + b if (a is not None and b is not None) else a if a is not None else b for a, b in zip(xdata, _bases)]
-                    else:
-                        rydata = [a + b if (a is not None and b is not None) else a if a is not None else b for a, b in zip(ydata, _bases)]
-                    updateRange(plotRange, [rxdata, rydata])
+                if options.trace_colours and frameTraceIndex < len(options.trace_colours):
+                    fillcolour = options.trace_colours[frameTraceIndex]
                 else:
+                    colourIndex = (subplot['palette_index'] if subplot['palette_local'] else globalPaletteIndex) % len(subplot['colours'])
+                    fillcolour = subplot['colours'][colourIndex]
+                markercolour = options.line_colour
+
+                _errors_symmetric = True
+                _errors_pos = None
+                _errors_neg = None
+                _bases = None
+                _labels = None
+                _colours = None
+                for nextColIndex in range(colIndex + 1, colIndex + 1 + len(options.traceSpecialColumns) if colIndex + 1 + len(options.traceSpecialColumns) <= len(frame.columns) else len(frame.columns)):
+                    nextCol = str(frame.columns[nextColIndex])
+                    if (nextCol not in options.traceSpecialColumns):
+                        break
+                    if (nextCol == options.special_column_prefix + 'error') and (_errors_pos is None):
+                        _errors_pos = [x if (x is not None) else 0 for x in frame.iloc[:, nextColIndex].values.tolist()]
+                    elif (nextCol == options.special_column_prefix + 'error+') and (_errors_pos is None):
+                        _errors_symmetric = False
+                        _errors_pos = [x if (x is not None) else 0 for x in frame.iloc[:, nextColIndex].values.tolist()]
+                    elif (nextCol == options.special_column_prefix + 'error-') and (_errors_neg is None):
+                        _errors_symmetric = False
+                        _errors_neg = [x if (x is not None) else 0 for x in frame.iloc[:, nextColIndex].values.tolist()]
+                    elif (nextCol == options.special_column_prefix + 'offset') and (_bases is None):
+                        _bases = [x if (x is not None) else 0 for x in frame.iloc[:, nextColIndex].values.tolist()]
+                    elif (nextCol == options.special_column_prefix + 'label') and (_labels is None):
+                        _labels = frame.iloc[:, nextColIndex].values.tolist()
+                    elif (nextCol == options.special_column_prefix + 'colour') and (_colours is None) and (frameTraceIndex >= len(options.trace_colours)):
+                        _colours = frame.iloc[:, nextColIndex].values.tolist()
+                        _colours = [c if c is not None else fillcolour for c in _colours]
+
+                if (options.plot == 'line'):
+                    ydata = frame.iloc[:, colIndex].values.tolist() if not options.vertical else list(frame.index)
+                    xdata = frame.iloc[:, colIndex].values.tolist() if options.vertical else list(frame.index)
                     updateRange(plotRange, [xdata, ydata])
-                if _categories is not None:
-                    multiCategory = True
-                    if options.horizontal:
-                        ydata = [_categories, ydata]
+                elif (options.plot == 'bar'):
+                    ydata = frame.iloc[:, colIndex].tolist() if options.vertical else list(frame.index)
+                    xdata = frame.iloc[:, colIndex].tolist() if not options.vertical else list(frame.index)
+                    if _bases is not None:
+                        rxdata = xdata
+                        rydata = ydata
+                        if (options.horizontal):
+                            rxdata = [a + b if (a is not None and b is not None) else a if a is not None else b for a, b in zip(xdata, _bases)]
+                        else:
+                            rydata = [a + b if (a is not None and b is not None) else a if a is not None else b for a, b in zip(ydata, _bases)]
+                        updateRange(plotRange, [rxdata, rydata])
                     else:
-                        xdata = [_categories, xdata]
-            else:  # Box and Violin
-                rawData = frame.iloc[:, colIndex].values
-                data = [x for x in rawData if x is not None]
-                if expandDistribution is not None:
-                    localExpand = [x for (x, y) in zip(expandDistribution, rawData) if y is not None]
-                    # Expansion is using ceiling to avoid dropping of data points. Side effect is that it might lift the distribution a little bit up
-                    data = list(numpy.repeat(localExpand, numpy.ceil(data).astype(numpy.int64)))
-                index = None
-                ydata = index if not options.vertical else data
-                xdata = index if options.vertical else data
-                updateRange(plotRange, [xdata, ydata])
+                        updateRange(plotRange, [xdata, ydata])
+                    if _categories is not None:
+                        multiCategory = True
+                        if options.horizontal:
+                            ydata = [_categories, ydata]
+                        else:
+                            xdata = [_categories, xdata]
+                else:  # Box and Violin
+                    rawData = frame.iloc[:, colIndex].values
+                    data = [x for x in rawData if x is not None]
+                    if expandDistribution is not None:
+                        localExpand = [x for (x, y) in zip(expandDistribution, rawData) if y is not None]
+                        # Expansion is using ceiling to avoid dropping of data points. Side effect is that it might lift the distribution a little bit up
+                        data = list(numpy.repeat(localExpand, numpy.ceil(data).astype(numpy.int64)))
+                    index = None
+                    ydata = index if not options.vertical else data
+                    xdata = index if options.vertical else data
+                    updateRange(plotRange, [xdata, ydata])
 
-            if options.offsetgroups == 'auto':
-                offsetgroup = options.subplotTraceIndex + inputFrameIndex + frameTraceIndex + 1 if args.bar_mode == 'group' else None
-            else:
-                if inputTraceIndex < len(options.offsetgroups):
-                    offsetgroup = options.offsetgroups[inputTraceIndex]
+                if options.offsetgroups == 'auto':
+                    offsetgroup = options.subplotTraceIndex + inputFrameIndex + frameTraceIndex + 1 if args.bar_mode == 'group' else None
                 else:
-                    offsetgroup = options.offsetgroups[-1]
+                    if inputTraceIndex < len(options.offsetgroups):
+                        offsetgroup = options.offsetgroups[inputTraceIndex]
+                    else:
+                        offsetgroup = options.offsetgroups[-1]
 
-            traceName = col
+                traceName = col
 
-            if (inputTraceIndex < len(options.trace_names)):
-                traceName = options.trace_names[inputTraceIndex]
-            elif (options.use_name is not None):
-                traceName = options.use_name
+                if (inputTraceIndex < len(options.trace_names)):
+                    traceName = options.trace_names[inputTraceIndex]
+                elif (options.use_name is not None):
+                    traceName = options.use_name
 
-            showInLegend = options.legend_entries == 'all'
-            if traceName not in legendEntries:
-                if options.legend_entries == 'unique':
-                    showInLegend = True
-                legendEntries.append(traceName)
+                showInLegend = options.legend_entries == 'all'
+                if traceName not in legendEntries:
+                    if options.legend_entries == 'unique':
+                        showInLegend = True
+                    legendEntries.append(traceName)
 
-            if options.plot == 'line':
-                lineMarker = options.line_markers[-1] if len(options.line_markers) <= inputTraceIndex else options.line_markers[inputTraceIndex]
-                plotScript.write(f"""
+                if options.plot == 'line':
+                    lineMarker = options.line_markers[-1] if len(options.line_markers) <= inputTraceIndex else options.line_markers[inputTraceIndex]
+                    plotScript.write(f"""
 fig.add_trace(go.Scatter(
     name='{traceName}',
     legendgroup='{traceName}',
     showlegend={showInLegend},
     mode='{options.line_mode}',""")
-                if (_colours is not None):
-                    plotScript.write(f"""
+                    if (_colours is not None):
+                        plotScript.write(f"""
     marker_color={_colours},""")
-                else:
-                    plotScript.write(f"""
+                    else:
+                        plotScript.write(f"""
 {commentColour}    marker_color='{fillcolour}',""")
-                plotScript.write(f"""
+                    plotScript.write(f"""
 {commentColour}    line_color='{fillcolour}',
 {commentColour}    fillcolor='{fillcolour}', # Currently not supported through script, using default
     stackgroup='{'stackgroup-' + str(inputIndex) if options.line_stack else ''}',
@@ -1833,12 +1852,12 @@ fig.add_trace(go.Scatter(
     line_width={options.line_width},
     y={ydata},
     x={xdata},""")
-                if (_labels is not None):
-                    plotScript.write(f"""
+                    if (_labels is not None):
+                        plotScript.write(f"""
     text={_labels},
     textposition='{options.line_text_position}',""")
-                if (_errors_pos is not None or _errors_neg is not None):
-                    plotScript.write(f"""
+                    if (_errors_pos is not None or _errors_neg is not None):
+                        plotScript.write(f"""
     error_{'y' if options.horizontal else 'x'}=dict(
         visible={options.show_error},
         type='data',
@@ -1846,24 +1865,24 @@ fig.add_trace(go.Scatter(
         array={_errors_pos},
         arrayminus={_errors_neg},
     ),""")
-                plotScript.write(f"""
+                    plotScript.write(f"""
     opacity={options.opacity},
 ), col={options.col}, row={options.row}, secondary_y={options.y_secondary})
 """)
-            elif options.plot == 'bar':
-                plotScript.write(f"""
+                elif options.plot == 'bar':
+                    plotScript.write(f"""
 fig.add_trace(go.Bar(
     name='{traceName}',
     legendgroup='{traceName}',
     showlegend={showInLegend},
     orientation='{'v' if options.vertical else 'h'}',""")
-                if (_colours is not None):
-                    plotScript.write(f"""
+                    if (_colours is not None):
+                        plotScript.write(f"""
     marker_color={_colours},""")
-                else:
-                    plotScript.write(f"""
+                    else:
+                        plotScript.write(f"""
 {commentColour}    marker_color='{fillcolour}',""")
-                plotScript.write(f"""
+                    plotScript.write(f"""
 {commentColour}    marker_line_color='{markercolour}',
     marker_line_width={options.line_width},
     width={options.bar_width},
@@ -1871,17 +1890,17 @@ fig.add_trace(go.Bar(
     offsetgroup={offsetgroup},
     y={ydata},
     x={xdata},""")
-                if (_labels is not None):
-                    plotScript.write(f"""
+                    if (_labels is not None):
+                        plotScript.write(f"""
     text={_labels},""")
-                plotScript.write(f"""
+                    plotScript.write(f"""
     texttemplate='{options.bar_text_template}',
     textposition='{options.bar_text_position}',""")
-                if (_bases is not None):
-                    plotScript.write(f"""
+                    if (_bases is not None):
+                        plotScript.write(f"""
     base={_bases},""")
-                if (_errors_pos is not None or _errors_neg is not None):
-                    plotScript.write(f"""
+                    if (_errors_pos is not None or _errors_neg is not None):
+                        plotScript.write(f"""
     error_{'x' if options.horizontal else 'y'}=dict(
         visible={options.show_error},
         type='data',
@@ -1889,13 +1908,13 @@ fig.add_trace(go.Bar(
         array={_errors_pos},
         arrayminus={_errors_neg},
     ),""")
-                plotScript.write(f"""
+                    plotScript.write(f"""
     opacity={options.opacity},
 ), col={options.col}, row={options.row}, secondary_y={options.y_secondary})
 """)
-            elif options.plot == 'box':
-                markercolour = options.line_colour
-                plotScript.write(f"""
+                elif options.plot == 'box':
+                    markercolour = options.line_colour
+                    plotScript.write(f"""
 fig.add_trace(go.Box(
     name='{traceName}',
     legendgroup='{traceName}',
@@ -1913,8 +1932,8 @@ fig.add_trace(go.Box(
     opacity={options.opacity},
 ), col={options.col}, row={options.row}, secondary_y={options.y_secondary})
 """)
-                if options.box_mean == 'dot':
-                    plotScript.write(f"""
+                    if options.box_mean == 'dot':
+                        plotScript.write(f"""
 fig.add_trace(go.Scatter(
     name='mean_{traceName}',
     legendgroup='{traceName}',
@@ -1927,15 +1946,15 @@ fig.add_trace(go.Scatter(
     opacity={options.opacity},
 ), col={options.col}, row={options.row}, secondary_y={options.y_secondary})
 """)
-            elif options.plot == 'violin':
-                if options.violin_mode == 'halfhalf':
-                    side = 'negative' if inputTraceIndex % 2 == 0 else 'positive'
-                elif options.violin_mode.endswith('half') or options.violin_mode.endswith('halfgroup'):
-                    side = 'negative' if options.violin_mode.startswith('neg') else 'positive'
-                else:
-                    side = 'both'
-                markercolour = options.line_colour
-                plotScript.write(f"""
+                elif options.plot == 'violin':
+                    if options.violin_mode == 'halfhalf':
+                        side = 'negative' if inputTraceIndex % 2 == 0 else 'positive'
+                    elif options.violin_mode.endswith('half') or options.violin_mode.endswith('halfgroup'):
+                        side = 'negative' if options.violin_mode.startswith('neg') else 'positive'
+                    else:
+                        side = 'both'
+                    markercolour = options.line_colour
+                    plotScript.write(f"""
 fig.add_trace(go.Violin(
     name='{traceName}',
     legendgroup='{traceName}',
@@ -1959,24 +1978,39 @@ fig.add_trace(go.Violin(
 ), col={options.col}, row={options.row}, secondary_y={options.y_secondary})
 """)
 
-            traceIndex += 1
-            frameTraceIndex += 1
-            inputTraceIndex += 1
+                traceIndex += 1
+                frameTraceIndex += 1
+                inputTraceIndex += 1
+                if subplot['palette_local']:
+                    subplot['palette_index'] += 1 if args.per_trace_colours else 0
+                else:
+                    globalPaletteIndex += 1 if args.per_trace_colours else 0
+            inputFrameIndex += 1
+            frameIndex += 1
             if subplot['palette_local']:
-                subplot['palette_index'] += 1 if args.per_trace_colours else 0
+                subplot['palette_index'] += 1 if args.per_frame_colours else 0
             else:
-                globalPaletteIndex += 1 if args.per_trace_colours else 0
-        inputFrameIndex += 1
-        frameIndex += 1
+                globalPaletteIndex += 1 if args.per_frame_colours else 0
+        inputIndex += 1
         if subplot['palette_local']:
-            subplot['palette_index'] += 1 if args.per_frame_colours else 0
+            subplot['palette_index'] += 1 if args.per_input_colours else 0
         else:
-            globalPaletteIndex += 1 if args.per_frame_colours else 0
-    inputIndex += 1
-    if subplot['palette_local']:
-        subplot['palette_index'] += 1 if args.per_input_colours else 0
+            globalPaletteIndex += 1 if args.per_input_colours else 0
     else:
-        globalPaletteIndex += 1 if args.per_input_colours else 0
+        data = frame.values.T.tolist() if options.vertical else frame.values.tolist()
+        yaxis = list(frame.columns) if options.vertical else list(frame.index)
+        xaxis = list(frame.columns) if not options.vertical else list(frame.index)
+        updateRange(plotRange, [xaxis, yaxis])
+        if options.plot == 'heatmap':
+            plotScript.write(f"""
+fig.add_trace(go.Heatmap(
+    y={yaxis},
+    x={xaxis},
+    z={data},
+    colorscale={subplot['cmap']},
+), col={options.col}, row={options.row}, secondary_y={options.y_secondary})
+            """)
+            pass
 
     # Find out if we need left, right and bottom margin:
     if defaultLeftMargin is None and options.col == 1 and options.y_title and not options.y_secondary:
@@ -2104,12 +2138,12 @@ if args.browser or len(args.output) > 0:
         cmdLine.append('--quiet')
     subprocess.check_call(cmdLine, cwd=scriptContext)
 
-if not args.script:
+if scriptPath is None:
     os.close(plotFd)
     os.remove(plotScriptName)
 else:
-    for s in secondaryScripts:
-        shutil.copy(args.script, s)
+    for s in secondaryScriptPaths:
+        shutil.copy(scriptPath, s)
     if not args.quiet:
-        for s in [args.script] + secondaryScripts:
+        for s in [scriptPath] + secondaryScriptPaths:
             print(f"Script saved to {s}")
