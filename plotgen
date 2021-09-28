@@ -40,7 +40,7 @@ import xopen
 import seaborn
 
 __prog__ = 'plotgen'
-__version__ = '0.5.2'
+__version__ = '0.5.3'
 __url__ = 'https://github.com/bgottschall/plotgen'
 
 
@@ -416,16 +416,25 @@ class DataframeActions:
         if not isinstance(targetRowIds, list):
             targetRowIds = [targetRowIds]
 
+        parameter = int(parameter) if str(parameter).isdigit() else float(parameter) if isFloat(parameter) else parameter
+
         colWarning = False
         constMap = {
             'zero': 0,
             'one': 1,
             'nan': numpy.nan,
-            'const': int(parameter) if str(parameter).isdigit() else float(parameter) if isFloat(parameter) else parameter
+            'set': parameter
         }
+
+        setMap = {
+            'setzero': 0,
+            'setone': 1,
+            'setnan': numpy.nan,
+        }
+
         # These functions are applied on each row individually, targetRowIds will be considered as applyRowIds as well
         pandasSelfFunctions = ['abs', 'cumsum', 'cummax', 'cummin', 'cumprod', 'rank']
-        specialSelfFunctions = list(constMap.keys()) + ['polyfit']
+        specialSelfFunctions = list(setMap.keys()) + list(constMap.keys()) + ['polyfit']
 
         with pandas.option_context('mode.chained_assignment', None):
             if function in (pandasSelfFunctions + specialSelfFunctions):
@@ -438,6 +447,8 @@ class DataframeActions:
                         dataframe.iloc[applyRowIds, :] = getattr(dataframe.iloc[applyRowIds, :], function)(axis=1).values
                 elif function in constMap:
                     dataframe.iloc[applyRowIds, :] = constMap[function]
+                elif function in setMap:
+                    dataframe.iloc[applyRowIds, :] = dataframe.iloc[applyRowIds, :].applymap(lambda x: setMap[function] if x == parameter else x)
                 elif function == 'polyfit':
                     try:
                         parameter = int(parameter)
@@ -467,7 +478,7 @@ class DataframeActions:
                     if applyMode == 'reverse':
                         targetRowIds, applyRowIds = applyRowIds, targetRowIds
 
-                    if function == 'set':
+                    if function == 'copy':
                         if len(applyRowIds) > 0 and not args.quiet:
                             print('WARNING: only the last row has an effect with apply function set!', file=sys.stderr)
                         dataframe.iloc[targetRowIds, :] = dataframe.iloc[targetRowIds, :].apply(lambda _: dataframe.iloc[applyRowIds[-1], :], axis=1).values
@@ -483,16 +494,24 @@ class DataframeActions:
         if not isinstance(targetColumnIds, list):
             targetColumnIds = [targetColumnIds]
 
+        parameter = int(parameter) if str(parameter).isdigit() else float(parameter) if isFloat(parameter) else parameter
+
         indexWarning = False
         constMap = {
             'zero': 0,
             'one': 1,
             'nan': numpy.nan,
-            'const': int(parameter) if str(parameter).isdigit() else float(parameter) if isFloat(parameter) else parameter
+            'set': parameter
+        }
+
+        setMap = {
+            'setzero': 0,
+            'setone': 1,
+            'setnan': numpy.nan,
         }
         # These functions are applied on each row individually, targetRowIds will be considered as applyRowIds as well
-        pandasSelfFunctions = ['abs', 'cumsum', 'cummax', 'cummin', 'cumprod', 'rank']
-        specialSelfFunctions = list(constMap.keys()) + ['polyfit']
+        pandasSelfFunctions = ['abs', 'cumsum', 'cummax', 'cummin', 'cumprod', 'rank', 'nan']
+        specialSelfFunctions = list(setMap.keys()) + list(constMap.keys()) + ['polyfit']
 
         with pandas.option_context('mode.chained_assignment', None):
             if function in (pandasSelfFunctions + specialSelfFunctions):
@@ -505,6 +524,8 @@ class DataframeActions:
                         dataframe.iloc[:, applyColumnIds] = getattr(dataframe.iloc[:, applyColumnIds], function)(axis=0).values
                 elif function in constMap:
                     dataframe.iloc[:, applyColumnIds] = constMap[function]
+                elif function in setMap:
+                    dataframe.iloc[:, applyColumnIds] = dataframe.iloc[:, applyColumnIds].applymap(lambda x: setMap[function] if x == parameter else x)
                 elif function == 'polyfit':
                     try:
                         parameter = int(parameter)
@@ -534,9 +555,9 @@ class DataframeActions:
                     if applyMode == 'reverse':
                         targetColumnIds, applyColumnIds = applyColumnIds, targetColumnIds
 
-                    if function == 'set':
+                    if function == 'copy':
                         if len(applyColumnIds) > 0 and not args.quiet:
-                            print('WARNING: only the last column has an effect with apply function set!', file=sys.stderr)
+                            print('WARNING: only the last column has an effect with apply function copy!', file=sys.stderr)
                         dataframe.iloc[:, targetColumnIds] = dataframe.iloc[:, targetColumnIds].apply(lambda _: dataframe.iloc[:, applyColumnIds[-1]], axis=0).values
                     else:
                         applyColumns = [dataframe.iloc[:, columnIdx].apply(pandas.to_numeric, errors='coerce') for columnIdx in applyColumnIds]
@@ -734,7 +755,7 @@ parserFileOptions.add_argument("--group-by-rows", help="group by this row", type
 parserFileOptions.add_argument("--abs", help="convert all values to absolute values", type=str, default=False, nargs=0, sub_action="store_true", sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--apply-mode", help="apply first row/column parameter on all others or in reverse (default %(default)s)", type=str, default='normal', choices=['normal', 'reverse'], action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--apply-parameter", help="additional function paramter (e.g. dimension of polyfit)", type=str, default='1', action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--apply-function", help="use this function to compute new row/column", type=str, default='mean', choices=['add', 'radd', 'sub', 'rsub', 'mul', 'rmul', 'div', 'rdiv', 'mod', 'rmod', 'pow', 'rpow', 'cumsum', 'cummax', 'cummin', 'cumprod', 'rank', 'nan', 'zero', 'one', 'abs', 'set', 'const', 'polyfit'], action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--apply-function", help="use this function to compute new row/column", type=str, default='mean', choices=['add', 'radd', 'sub', 'rsub', 'mul', 'rmul', 'div', 'rdiv', 'mod', 'rmod', 'pow', 'rpow', 'cumsum', 'cummax', 'cummin', 'cumprod', 'rank', 'nan', 'zero', 'one', 'abs', 'set', 'copy', 'polyfit', 'setzero', 'setone', 'setnan'], action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--apply-icolumns", help="compute function on multiple column indexes", type=SliceType(), default=[], nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--apply-irows", help="compute function on multiple row indexes", type=SliceType(), default=[], nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--apply-columns", help="compute function on multiple columns", type=str, default=[], nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
@@ -816,6 +837,7 @@ parserBoxPlotOptions.add_argument("--box-width", help="box width (default %(defa
 parserBoxPlotOptions.add_argument("--box-gap", help="gap between boxes (default %(default)s) (not compatible with box-width)", type=float, default=0.3, choices=Range(0, 1))
 parserBoxPlotOptions.add_argument("--box-group-gap", help="gap between box groups (default %(default)s) (not compatible with box-width)", type=float, default=0.3, choices=Range(0, 1))
 
+
 parserPlotAxisOptions = parser.add_argument_group('plot axis options')
 parserPlotAxisOptions.add_argument("--y-secondary", help="plot to secondary y-axis", default=False, sticky_default=True, nargs=0, sub_action="store_true", action=ChildAction, parent=inputFileArgument)
 parserPlotAxisOptions.add_argument("--y-title", help="y-axis title", default=None, sticky_default=True, action=ChildAction, parent=inputFileArgument)
@@ -872,14 +894,17 @@ parserColourOptions.add_argument("--palette-opacity", help="palette colour opaci
 parserColourOptions.add_argument("--palette-reverse", help="reverse colour palette", action="store_true", default=False)
 parserColourOptions.add_argument("--palette-count", help="manually set the number of colours to generate from the palette", type=int, choices=Range(1, None), default=None)
 parserColourOptions.add_argument("--palette-start", help="set the palette start index (default %(default)s)", type=int, default=0, choices=Range(0, None))
+parserColourOptions.add_argument("--palette-cmap", help="how to generate continous colour maps (default %(default)s)", type=str, default='linear', choices=['linear', 'log', 'rlog'])
 parserColourOptions.add_argument("--subplot-colours", help="specify explicit subplot colours (sets default colour cycle to subplot)", type=escapedStr, default=[], nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserColourOptions.add_argument("--subplot-palette", help="valid seaborn colour palette used for this subplot (sets default colour cycle to subplot)", type=str, default=None, sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserColourOptions.add_argument("--subplot-palette-opacity", help="subplot palette opacity", type=float, choices=Range(0, 1.0), default=None, sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserColourOptions.add_argument("--subplot-palette-reverse", help="reverse subplot colour palette", sub_action="store_true", default=False, nargs=0, sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserColourOptions.add_argument("--subplot-palette-count", help="manually set the number of colours to generate from the subplot palette (set default colour cycle to subplot)", type=int, choices=Range(1, None), default=None, sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserColourOptions.add_argument("--subplot-palette-start", help="set the subplot palette start index (default 0)", type=int, default=None, choices=Range(0, None), sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserColourOptions.add_argument("--subplot-palette-cmap", help="how to generate continous colour maps (default linear)", type=str, default=None, choices=['linear', 'log', 'rlog'], sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserColourOptions.add_argument("--colour-cycle", help="cycle through colours globally or per subplot (default global)", choices=['subplot', 'global'], default=None, action=ChildAction, parent=inputFileArgument)
 parserColourOptions.add_argument("--colour-debug", help="print generated colour palettes", action="store_true", default=False)
+parserColourOptions.add_argument("--colour-scale", help="show or hide continous colour scales (default %(default)s)", choices=['show', 'hide'], default='show', action=ChildAction, parent=inputFileArgument)
 
 parserColourOptions.add_argument("--per-trace-colours", help="one colour for each trace (default)", action='store_true', default=False)
 parserColourOptions.add_argument("--per-frame-colours", help="one colour for each dataframe", action='store_true', default=False)
@@ -1513,7 +1538,8 @@ for input in args.input:
             'palette_local': inputOptions.colour_cycle == 'subplot',
             'palette_reverse': args.palette_reverse,
             'palette_index': args.palette_start,
-            'palette_opacity': args.palette_opacity
+            'palette_opacity': args.palette_opacity,
+            'palette_cmap': args.palette_cmap
         })
 
     subplotGridDefinition[inputOptions.row][inputOptions.col]['rowspan'] = max(inputOptions.rowspan, subplotGridDefinition[inputOptions.row][inputOptions.col]['rowspan'])
@@ -1526,6 +1552,7 @@ for input in args.input:
         subplotGridDefinition[inputOptions.row][inputOptions.col]['colours'] = copy.copy(inputOptions.subplot_colours)
     if inputOptions.subplot_palette is not None:
         subplotGridDefinition[inputOptions.row][inputOptions.col]['palette'] = inputOptions.subplot_palette
+    if inputOptions.subplot_palette_reverse is not None:
         subplotGridDefinition[inputOptions.row][inputOptions.col]['palette_reverse'] = inputOptions.subplot_palette_reverse
     if inputOptions.subplot_palette_count is not None:
         subplotGridDefinition[inputOptions.row][inputOptions.col]['palette_count'] = inputOptions.subplot_palette_count
@@ -1533,6 +1560,10 @@ for input in args.input:
         subplotGridDefinition[inputOptions.row][inputOptions.col]['palette_index'] = inputOptions.subplot_palette_start
     if inputOptions.subplot_palette_opacity is not None:
         subplotGridDefinition[inputOptions.row][inputOptions.col]['palette_opacity'] = inputOptions.subplot_palette_opacity
+    if inputOptions.subplot_palette_opacity is not None:
+        subplotGridDefinition[inputOptions.row][inputOptions.col]['palette_opacity'] = inputOptions.subplot_palette_opacity
+    if inputOptions.subplot_palette_cmap is not None:
+        subplotGridDefinition[inputOptions.row][inputOptions.col]['palette_cmap'] = inputOptions.subplot_palette_cmap
 
     inputOptions.subplotTraceIndex = subplotGridDefinition[inputOptions.row][inputOptions.col]['traces']
     subplotGridDefinition[inputOptions.row][inputOptions.col]['traces'] += inputOptions.traceCount
@@ -1599,9 +1630,7 @@ for r in range(1, int(subplotGrid[1]['max']) + 1):
                 subplot['palette_count'] = max(0, subplot['palette_count'] - len(subplot['colours']))
             subplot['colours'].extend([f"rgba({int(255*r)}, {int(255*g)}, {int(255*b)}, {subplot['palette_opacity']})" for (r, g, b) in seaborn.color_palette(subplot['palette'], subplot['palette_count'])])
 
-            # Only required for continuous colour scales
-            seaborn_cmap = seaborn.color_palette(subplot['palette'], as_cmap=True)
-            subplot['cmap'] = [f'rgb({r}, {g}, {b})' for (r, g, b) in [map(numpy.uint8, 255 * numpy.array(seaborn_cmap(i)[:3])) for i in numpy.arange(0, 1.0, (1.0 / 255))]]
+            subplot['cmap'] = None
 
             if subplot['palette_reverse']:
                 subplot['colours'].reverse()
@@ -1997,6 +2026,23 @@ fig.add_trace(go.Violin(
         else:
             globalPaletteIndex += 1 if args.per_input_colours else 0
     else:
+        # Generate continuous colour scale as we will need it here
+        if subplot['cmap'] is None:
+            try:
+                seaborn_cmap = seaborn.color_palette(subplot['palette'], as_cmap=True)
+                if subplot['palette_cmap'] in ['log', 'rlog']:
+                    cmap_range = numpy.logspace(numpy.log10(0.1), numpy.log10(1.1), 255) - 0.1
+                    if subplot['palette_cmap'] == 'rlog':
+                        cmap_range = numpy.flip(1 - cmap_range)
+                else:
+                    cmap_range = numpy.arange(0.0, 1.0 + (1.0 / 255), 1.0 / 255)
+                if subplot['palette_reverse']:
+                    cmap_range = numpy.flip(cmap_range)
+
+                subplot['cmap'] = [f'rgb({r}, {g}, {b})' for (r, g, b) in [map(numpy.uint8, 255 * numpy.array(seaborn_cmap(i)[:3])) for i in cmap_range]]
+            except Exception:
+                raise 'ERROR: could not generated continuous colour scale, is the chosen seaborn palette compatible?'
+
         data = frame.values.T.tolist() if options.vertical else frame.values.tolist()
         yaxis = list(frame.columns) if options.vertical else list(frame.index)
         xaxis = list(frame.columns) if not options.vertical else list(frame.index)
@@ -2007,7 +2053,8 @@ fig.add_trace(go.Heatmap(
     y={yaxis},
     x={xaxis},
     z={data},
-    colorscale={subplot['cmap']},
+{commentColour}    colorscale={subplot['cmap']},
+    showscale={options.colour_scale == 'show'},
 ), col={options.col}, row={options.row}, secondary_y={options.y_secondary})
             """)
             pass
@@ -2037,6 +2084,7 @@ fig.add_trace(go.Heatmap(
     plotScript.write(f"fig.update_xaxes(type='{options.x_type}', rangemode='{options.x_range_mode}', automargin={True if options.x_title_standoff is None else False}, title_standoff={options.x_title_standoff}, col={options.col}, row={options.row})\n")
     plotScript.write(f"fig.update_yaxes(showline={options.y_line_width > 0}, linewidth={options.y_line_width}, linecolor={options.y_colour}, gridcolor={options.y_grid_colour}, col={options.col}, row={options.row}, secondary_y={options.y_secondary})\n")
     plotScript.write(f"fig.update_xaxes(showline={options.x_line_width > 0}, linewidth={options.x_line_width}, linecolor={options.x_colour}, gridcolor={options.x_grid_colour}, col={options.col}, row={options.row})\n")
+    plotScript.write(f"fig.update_coloraxes(showscale={options.colour_scale == 'show'}, col={options.col}, row={options.row})\n")
     plotScript.write("# Multi-category options:\n")
     plotScript.write(f"fig.update_yaxes(showdividers={options.y_line_width > 0}, dividercolor={options.y_colour}, dividerwidth={options.y_line_width}, col={options.col}, row={options.row}, secondary_y={options.y_secondary})\n")
     plotScript.write(f"fig.update_xaxes(showdividers={options.x_line_width > 0}, dividercolor={options.x_colour}, dividerwidth={options.x_line_width}, col={options.col}, row={options.row})\n")
