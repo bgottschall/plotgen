@@ -40,7 +40,7 @@ import xopen
 import seaborn
 
 __prog__ = 'plotgen'
-__version__ = '0.5.4'
+__version__ = '0.5.5'
 __url__ = 'https://github.com/bgottschall/plotgen'
 
 
@@ -378,25 +378,44 @@ class DataframeActions:
     def reverseRows(dataframe):
         return dataframe.iloc[::-1]
 
-    def sortColumnsByRowIds(dataframe, rowIds, function='mean', order='asc', quiet=False):
+    def sortColumnsByRowIds(dataframe, rowIds, function='none', order='asc', quiet=False):
         if not isinstance(rowIds, list):
             rowIds = [rowIds]
+        sortSeries = 'columns' in rowIds or function != 'none'
         if 'columns' in rowIds:
             sortKey = dataframe.columns.to_series()
         else:
-            sortKey = getattr(dataframe.iloc[rowIds], function)(axis=0)
-        sortKey.reset_index(drop=True, inplace=True)
-        return dataframe.iloc[:, sortKey.sort_values(ascending=(order == 'asc')).index]
+            sortKey = dataframe.iloc[rowIds].apply(pandas.to_numeric, errors="ignore")
+            if function != 'none':
+                sortKey = getattr(sortKey, function)(axis=0, numeric_only=True)
 
-    def sortRowsByColumnIds(dataframe, colIds, function='mean', order='asc', quiet=False):
+        sortKey.reset_index(drop=True, inplace=True)
+        sortKey.columns = range(sortKey.shape[1])
+        if sortSeries:
+            sortKey.sort_values(ascending=(order == 'asc'), inplace=True)
+        else:
+            sortKey = sortKey.sort_values(by=sortKey.index.to_list(), axis=1, ascending=(order == 'asc')).T
+        return dataframe.iloc[:, sortKey.index]
+
+    def sortRowsByColumnIds(dataframe, colIds, function='none', order='asc', quiet=False):
         if not isinstance(colIds, list):
             colIds = [colIds]
+        sortSeries = 'index' in colIds or function != 'none'
         if 'index' in colIds:
             sortKey = pandas.to_numeric(dataframe.index, errors="ignore").to_series()
         else:
-            sortKey = getattr(dataframe.iloc[:, colIds], function)(axis=1)
+            sortKey = dataframe.iloc[:, colIds].apply(pandas.to_numeric, errors="ignore")
+            if function != 'none':
+                sortKey = getattr(sortKey, function)(axis=1, numeric_only=True)
+
         sortKey.reset_index(drop=True, inplace=True)
-        return dataframe.iloc[sortKey.sort_values(ascending=(order == 'asc')).index, :]
+        sortKey.columns = range(sortKey.shape[1])
+        if sortSeries:
+            sortKey.sort_values(ascending=(order == 'asc'), inplace=True)
+        else:
+            sortKey.sort_values(by=sortKey.columns.to_list(), axis=0, ascending=(order == 'asc'), inplace=True)
+
+        return dataframe.iloc[sortKey.index, :]
 
     def addConstant(dataframe, constant):
         return dataframe + constant
@@ -715,14 +734,14 @@ parserFileOptions.add_argument("--select-icolumns", help="select these column in
 parserFileOptions.add_argument("--select-columns", help="select these columns", type=str, default=[], sticky_default=True, nargs='+', action=ChildAction, parent=inputFileArgument)
 
 
-parserFileOptions.add_argument("--filter-mode", help="filter data mode (default %(default)s)", type=str, default="=", choices=['=', '!=', '<', '>', '<=', '>=' '!='], action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--filter-mode", help="filter data mode (default %(default)s)", type=str, default="=", choices=['=', '!=', '<', '>', '<=', '>=', '!='], action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--filter-irows", help="filter data from rows after indexes", type=str, default=[], sticky_default=True, nargs='+', action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--filter-row", help="filter data from rows", type=str, default=[], sticky_default=True, nargs='+', action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--filter-icolumns", help="filter data from columns after indexes", type=str, default=[], sticky_default=True, nargs='+', action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--filter-column", help="filter data from columns", type=str, default=[], sticky_default=True, nargs='+', action=ChildAction, parent=inputFileArgument)
 
 parserFileOptions.add_argument("--sort-order", help="sort rows after or column in this order (default %(default)s)", default='desc', choices=['asc', 'desc'], action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--sort-function", help="sort rows after function or column (default %(default)s)", default='mean', choices=['mean', 'median', 'std', 'min', 'max'], action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--sort-function", help="sort rows after function or column (default %(default)s)", default='none', choices=['none', 'mean', 'median', 'std', 'min', 'max'], action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--sort-columns", help="sort columns", default=False, sub_action="store_true", nargs=0, sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--sort-by-irows", help="sort column after this row index", type=SliceType({'columns': 'columns', **defaultSliceTypeTranslator}), default=[], nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--sort-by-rows", help="sort column after this row", type=str, default=[], nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
@@ -1202,7 +1221,7 @@ for input in args.input:
 
     selectMode = 'all'
     filterMode = '='
-    sortFunction = 'mean'
+    sortFunction = 'none'
     addAt = 'back'
     addFunction = 'mean'
     applyMode = 'normal'
