@@ -40,7 +40,7 @@ import xopen
 import seaborn
 
 __prog__ = 'plotgen'
-__version__ = '0.5.3'
+__version__ = '0.5.4'
 __url__ = 'https://github.com/bgottschall/plotgen'
 
 
@@ -1312,7 +1312,7 @@ for input in args.input:
                     if 'index' in optionValue:
                         if (len(optionValue) > 1 and not args.quiet):
                             print('WARNING: cannot combine sorting after index with other columns', file=sys.stderr)
-                        frame = DataframeActions.sortRowsByColumnIds(frame, 'index', groupFunction)
+                        frame = DataframeActions.sortRowsByColumnIds(frame, 'index', sortFunction, sortOrder)
                     else:
                         columnIds = DataframeActions.sliceToColumnIds(frame, optionValue)
                         frame = DataframeActions.sortRowsByColumnIds(frame, columnIds, sortFunction, sortOrder)
@@ -1320,7 +1320,7 @@ for input in args.input:
                     if 'columns' in optionValue:
                         if (len(optionValue) > 1 and not args.quiet):
                             print('WARNING: cannot combine sorting after columns with other rows', file=sys.stderr)
-                        frame = DataframeActions.sortColumnsByRowIds(frame, 'columns', groupFunction)
+                        frame = DataframeActions.sortColumnsByRowIds(frame, 'columns', sortFunction, sortOrder)
                     else:
                         rowIds = DataframeActions.sliceToRowIds(frame, optionValue)
                         frame = DataframeActions.sortColumnsByRowIds(frame, rowIds, sortFunction, sortOrder)

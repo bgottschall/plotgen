@@ -4,7 +4,7 @@ pip: clean .check_version
 	$(MAKE) wheel
 	$(MAKE) pip_upload
 
-wheel:
+wheel: setup.py
 	python setup.py bdist_wheel
 
 pip_upload:
@@ -16,7 +16,7 @@ tests plots:
 clean:
 	rm -Rf build dist plotgen.egg-info __pycache__
 
-.check_version:
+.check_version: plotgen setup.py
 	@[ "$$(grep version setup.py | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+')" = "$$(grep __version__ plotgen | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+')" ] || { echo "Version mismatch between plotgen and setup.py!" && exit 1; }
 
 
