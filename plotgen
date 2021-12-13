@@ -40,7 +40,7 @@ import xopen
 import seaborn
 
 __prog__ = 'plotgen'
-__version__ = '0.5.5'
+__version__ = '0.5.6'
 __url__ = 'https://github.com/bgottschall/plotgen'
 
 
@@ -210,6 +210,17 @@ def getSliceTypeIds(targetRange: range, slices: list):
     validIntRange = range(-len(targetRange), len(targetRange))
     selectedRanges = [targetRange[s] if isinstance(s, slice) else [targetRange[s]] if s in validIntRange else [] for s in slices]
     return [i for li in selectedRanges for i in li]
+
+
+def getSliceTypesFromList(target: list, match: list, matchMode='all'):
+    ret = []
+    for x in match:
+        if x not in target:
+            if isSliceType(x):
+                ret.append([SliceType()(x)])
+            continue
+        ret.append([target.index(x)] if selectMode == 'first' else [len(target) - target[-1::-1].index(x) - 1] if selectMode == 'last' else [i for i, v in enumerate(target) if v == x])
+    return [x for lx in ret for x in lx]
 
 
 def updateRange(_range, dataList):
@@ -667,7 +678,7 @@ class DataframeActions:
         if len(filenames) > 0:
             pFiles = f"File: {', '.join(filenames)}"
             pSep = '-' * min(consoleWidth.columns, len(pFiles))
-        print(pSep + f'\nFrame: {frameIndex+1}/{frameCount}')
+        print(pSep + f'\nFrame: {dataframe.index.name} ({frameIndex+1}/{frameCount})')
         if len(filenames) > 0:
             print(textwrap.fill(pFiles, width=consoleWidth.columns, subsequent_indent=' '))
         print(pSep)
@@ -718,21 +729,24 @@ parserFileOptions.add_argument("--no-columns", help="do not use a column row", d
 parserFileOptions.add_argument("--no-index", help="do not use a index column", default=False, sticky_default=True, nargs=0, sub_action="store_true", action=ChildAction, parent=inputFileArgument)
 
 
-parserFileOptions.add_argument("--index-icolumn", help="set index column after index", type=int, sticky_default=True, choices=Range(None, None), default=None, action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--index-icolumn", help="set index column index", type=int, sticky_default=True, choices=Range(None, None), default=None, action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--index-column", help="set index column", default=None, type=str, sticky_default=True, action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--reset-index", help="reset index back into data frame as first column", default=False, nargs=0, sub_action="store_true", sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--reset-index", help="reset index back into dataframe as first column", default=False, nargs=0, sub_action="store_true", sticky_default=True, action=ChildAction, parent=inputFileArgument)
 
-parserFileOptions.add_argument("--select-mode", help="select row/columns after policy (default %(default)s)", type=str, default='all', choices=['all', 'first', 'last'], action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--ignore-icolumns", help="ignore these column indexes", type=SliceType(), default=[], sticky_default=True, nargs='+', action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--ignore-columns", help="ignore these columns", type=str, default=[], sticky_default=True, nargs='+', action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--ignore-irows", help="ignore these row indexes", type=SliceType(), default=[], sticky_default=True, nargs='+', action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--ignore-rows", help="ignore these rows", type=str, default=[], sticky_default=True, nargs='+', action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--select-mode", help="select row/columns policy (default %(default)s)", type=str, default='all', choices=['all', 'first', 'last'], action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--ignore-icolumns", help="ignore column indexes", type=SliceType(), default=[], sticky_default=True, nargs='+', action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--ignore-columns", help="ignore columns", type=str, default=[], sticky_default=True, nargs='+', action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--ignore-irows", help="ignore row indexes", type=SliceType(), default=[], sticky_default=True, nargs='+', action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--ignore-rows", help="ignore rows", type=str, default=[], sticky_default=True, nargs='+', action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--ignore-iframes", help="ignore frame indexes", type=SliceType(), default=[], sticky_default=True, nargs='+', action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--ignore-frames", help="ignore frames", type=str, default=[], sticky_default=True, nargs='+', action=ChildAction, parent=inputFileArgument)
 
-parserFileOptions.add_argument("--select-irows", help="select these row indexes", type=SliceType(), default=[], sticky_default=True, nargs='+', action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--select-rows", help="select these rows", type=str, default=[], sticky_default=True, nargs='+', action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--select-icolumns", help="select these column indexes", type=SliceType(), default=[], sticky_default=True, nargs='+', action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--select-columns", help="select these columns", type=str, default=[], sticky_default=True, nargs='+', action=ChildAction, parent=inputFileArgument)
-
+parserFileOptions.add_argument("--select-irows", help="select row indexes", type=SliceType(), default=[], sticky_default=True, nargs='+', action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--select-rows", help="select rows", type=str, default=[], sticky_default=True, nargs='+', action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--select-icolumns", help="select column indexes", type=SliceType(), default=[], sticky_default=True, nargs='+', action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--select-columns", help="select columns", type=str, default=[], sticky_default=True, nargs='+', action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--select-iframes", help="select frame indexes", type=SliceType(), default=[], sticky_default=True, nargs='+', action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--select-frames", help="select frames", type=str, default=[], sticky_default=True, nargs='+', action=ChildAction, parent=inputFileArgument)
 
 parserFileOptions.add_argument("--filter-mode", help="filter data mode (default %(default)s)", type=str, default="=", choices=['=', '!=', '<', '>', '<=', '>=', '!='], action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--filter-irows", help="filter data from rows after indexes", type=str, default=[], sticky_default=True, nargs='+', action=ChildAction, parent=inputFileArgument)
@@ -782,6 +796,7 @@ parserFileOptions.add_argument("--apply-rows", help="compute function on multipl
 
 parserFileOptions.add_argument("--column-names", help="rename columns", type=str, sticky_default=True, default=[], nargs='+', action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--row-names", help="rename rows", type=str, sticky_default=True, default=[], nargs='+', action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--frame-names", help="rename frames", type=str, sticky_default=True, default=[], nargs='+', action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--drop-nan", help="dropping rows/columns that are completely empty", sticky_default=True, default=False, nargs=0, sub_action="store_true", action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--drop-any-nan", help="dropping rows/columns that contain empty values", sticky_default=True, default=False, nargs=0, sub_action="store_true", action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--transpose", help="transpose data", default=False, sticky_default=True, nargs=0, sub_action="store_true", action=ChildAction, parent=inputFileArgument)
@@ -793,8 +808,10 @@ parserFileOptions.add_argument("--split-column", help="split frame along this co
 parserFileOptions.add_argument("--split-irow", help="split frame along this row index ('_columns' splits by columns)", type=str, sticky_default=True, choices=Range(None, None, ['columns']), default=None, action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--split-row", help="split frame along this row", type=str, sticky_default=True, default=None, action=ChildAction, parent=inputFileArgument)
 
-parserFileOptions.add_argument("--focus-frames", help="set the frame focus for file options (default all)", type=SliceType(), default=[], nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--defocus-frames", help="remove frames from focus for file options", type=SliceType(), default=[], nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--focus-iframes", help="set the frame focus for file options (default all)", type=SliceType(), default=[], nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--defocus-iframes", help="remove frames from focus for file options", type=SliceType(), default=[], nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--focus-frames", help="set the frame focus for file options (default all)", type=str, default=[], nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--defocus-frames", help="remove frames from focus for file options", type=str, default=[], nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
 
 parserFileOptions.add_argument("--print-precision", help="set explicit output prevision for text and console output (default %(default)s)", type=str, default='default', choices=Range(0, None, ['default']), action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--file", help="save data frames to text files (one file per frame)", default=None, type=str, nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
@@ -1201,6 +1218,7 @@ for input in args.input:
 
             if (not options.no_columns):
                 frame.columns = frame.iloc[0]
+                frame.columns.name = None
                 # frame.columns.name = frame.iloc[0].name
                 frame = DataframeActions.dropRowsByIds(frame, [0])
 
@@ -1234,7 +1252,7 @@ for input in args.input:
     focusedFrames = list(range(len(inputFrames)))
 
     for (optionName, optionValue) in input['args'].ordered_args:
-        multiFrameActions = ['print_precision', 'select_mode', 'filter_mode', 'sort_function', 'sort_order', 'add_at', 'add_function', 'apply_mode', 'apply_function', 'group_function', 'apply_parameter', 'join', 'file', 'pickle', 'split_column', 'split_icolumn', 'split_row', 'split_irow', 'focus_frames', 'defocus_frames']
+        multiFrameActions = ['print_precision', 'select_mode', 'filter_mode', 'sort_function', 'sort_order', 'add_at', 'add_function', 'apply_mode', 'apply_function', 'group_function', 'apply_parameter', 'join', 'file', 'pickle', 'split_column', 'split_icolumn', 'split_row', 'split_irow', 'focus_iframes', 'defocus_iframes', 'focus_frames', 'defocus_frames', 'select_iframes', 'select_frames', 'ignore_iframes', 'ignore_frames', 'frame_names']
         if optionName not in multiFrameActions:
             for _index, (frameOptions, frame) in enumerate(inputFrames):
                 if (_index) not in focusedFrames:
@@ -1441,12 +1459,28 @@ for input in args.input:
 
                 inputFrames[_index] = (frameOptions, frame)
         else:
-            if optionName == 'focus_frames':
-                focusedFrames = sorted(getSliceTypeIds(range(len(inputFrames)), optionValue))
-            elif optionName == 'defocus_frames':
-                for f in getSliceTypeIds(range(len(inputFrames)), optionValue):
-                    if f in focusedFrames:
-                        focusedFrames.remove(f)
+            if optionName in ['focus_frames', 'defocus_frames', 'focus_iframes', 'defocus_iframes']:
+                if optionName in ['focus_frames', 'defocus_frames']:
+                    optionValue = getSliceTypesFromList([f.index.name for (_, f) in inputFrames], optionValue, selectMode)
+
+                if optionName in ['focus_frames', 'focus_iframes']:
+                    focusedFrames = sorted(getSliceTypeIds(range(len(inputFrames)), optionValue))
+                else:
+                    focusedFrames = [f for f in focusedFrames if f not in getSliceTypeIds(range(len(inputFrames)), optionValue)]
+            elif optionName in ['select_frames', 'select_iframes', 'ignore_frames', 'ignore_iframes']:
+                if optionName in ['select_frames', 'ignore_frames']:
+                    optionValue = getSliceTypesFromList([f.index.name for (_, f) in inputFrames], optionValue, selectMode)
+
+                if optionName in ['select_frames', 'select_iframes']:
+                    inputFrames = [(copy.deepcopy(inputFrames[i][0]), inputFrames[i][1].copy()) for i in getSliceTypeIds(range(len(inputFrames)), optionValue)]
+                else:
+                    inputFrames = [x for i, x in enumerate(inputFrames) if i not in getSliceTypeIds(range(len(inputFrames)), optionValue)]
+                focusedFrames = list(range(len(inputFrames)))
+            elif optionName == 'frame_names':
+                for i, iF in enumerate(focusedFrames):
+                    if i >= len(optionValue):
+                        break
+                    inputFrames[iF][1].index.name = optionValue[i]
             elif optionName == 'print_precision':
                 outputPrecision = None if optionValue == 'default' else int(optionValue)
             elif optionName == 'select_mode':
@@ -2198,7 +2232,7 @@ if len(args.output) > 0:
 
 plotScript.close()
 if args.browser or len(args.output) > 0:
-    cmdLine = ['python', plotScriptName]
+    cmdLine = ['python3', plotScriptName]
     if args.browser:
         cmdLine.append('--browser')
     if args.quiet:
