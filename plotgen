@@ -40,7 +40,7 @@ import xopen
 import seaborn
 
 __prog__ = 'plotgen'
-__version__ = '0.5.7'
+__version__ = '0.5.8'
 __url__ = 'https://github.com/bgottschall/plotgen'
 
 
@@ -401,10 +401,10 @@ class DataframeActions:
                 sortKey = getattr(sortKey, function)(axis=0, numeric_only=True)
 
         sortKey.reset_index(drop=True, inplace=True)
-        sortKey.columns = range(sortKey.shape[1])
         if sortSeries:
             sortKey.sort_values(ascending=(order == 'asc'), inplace=True)
         else:
+            sortKey.columns = range(sortKey.shape[1])
             sortKey = sortKey.sort_values(by=sortKey.index.to_list(), axis=1, ascending=(order == 'asc')).T
         return dataframe.iloc[:, sortKey.index]
 
@@ -420,10 +420,10 @@ class DataframeActions:
                 sortKey = getattr(sortKey, function)(axis=1, numeric_only=True)
 
         sortKey.reset_index(drop=True, inplace=True)
-        sortKey.columns = range(sortKey.shape[1])
         if sortSeries:
             sortKey.sort_values(ascending=(order == 'asc'), inplace=True)
         else:
+            sortKey.columns = range(sortKey.shape[1])
             sortKey.sort_values(by=sortKey.columns.to_list(), axis=0, ascending=(order == 'asc'), inplace=True)
 
         return dataframe.iloc[sortKey.index, :]
@@ -446,7 +446,7 @@ class DataframeActions:
         if not isinstance(targetRowIds, list):
             targetRowIds = [targetRowIds]
 
-        parameter = int(parameter) if str(parameter).isdigit() else float(parameter) if isFloat(parameter) else parameter
+        parameter = numpy.nan if parameter in considerAsNaN else int(parameter) if str(parameter).isdigit() else float(parameter) if isFloat(parameter) else parameter
 
         colWarning = False
         constMap = {
@@ -478,7 +478,7 @@ class DataframeActions:
                 elif function in constMap:
                     dataframe.iloc[applyRowIds, :] = constMap[function]
                 elif function in setMap:
-                    dataframe.iloc[applyRowIds, :] = dataframe.iloc[applyRowIds, :].applymap(lambda x: setMap[function] if x == parameter else x)
+                    dataframe.iloc[applyRowIds, :] = dataframe.iloc[applyRowIds, :].replace(parameter, setMap[function])
                 elif function == 'polyfit':
                     try:
                         parameter = int(parameter)
@@ -524,7 +524,7 @@ class DataframeActions:
         if not isinstance(targetColumnIds, list):
             targetColumnIds = [targetColumnIds]
 
-        parameter = int(parameter) if str(parameter).isdigit() else float(parameter) if isFloat(parameter) else parameter
+        parameter = numpy.nan if parameter in considerAsNaN else int(parameter) if str(parameter).isdigit() else float(parameter) if isFloat(parameter) else parameter
 
         indexWarning = False
         constMap = {
@@ -555,7 +555,7 @@ class DataframeActions:
                 elif function in constMap:
                     dataframe.iloc[:, applyColumnIds] = constMap[function]
                 elif function in setMap:
-                    dataframe.iloc[:, applyColumnIds] = dataframe.iloc[:, applyColumnIds].applymap(lambda x: setMap[function] if x == parameter else x)
+                    dataframe.iloc[:, applyColumnIds] = dataframe.iloc[:, applyColumnIds].replace(parameter, setMap[function])
                 elif function == 'polyfit':
                     try:
                         parameter = int(parameter)
@@ -837,6 +837,7 @@ parserPlotOptions.add_argument("--opacity", help="colour opacity (default 0.8 fo
 parserPlotOptions.add_argument("--offsetgroups", help="set explicit offsetgroups for e.g. bar charts", type=int, default='auto', nargs='+', choices=Range(0, None, ['auto']), sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserPlotOptions.add_argument("--legend-entries", help="choose which entries are shown in legend", choices=['all', 'unique', 'none'], default=None, action=ChildAction, parent=inputFileArgument)
 parserPlotOptions.add_argument("--distribution-mode", help="define whether the input data is parsed as binned or aggregated data (e.g. histogramm data) for appropriate plots (box and violin)", type=str, choices=['normal', 'aggregated'], default='normal', action=ChildAction, parent=inputFileArgument)
+parserPlotOptions.add_argument("--distribution-scale", help="scale data points to this number in distribution mode aggregated (default %(default)s)", type=float, choices=Range(0, None), default=0, action=ChildAction, parent=inputFileArgument)
 
 parserLinePlotOptions = parser.add_argument_group('line plot options')
 parserLinePlotOptions.add_argument("--line-mode", choices=['none', 'lines', 'markers', 'text', 'lines+markers', 'lines+text', 'markers+text', 'lines+markers+text'], help="choose linemode (default %(default)s)", default='lines', action=ChildAction, parent=inputFileArgument)
@@ -1202,6 +1203,11 @@ for input in args.input:
             elif (not isinstance(frame, pandas.DataFrame)):
                 raise Exception(f'pickle file {filename} is not a pandas data frame!')
             else:
+                frame = frame.apply(pandas.to_numeric, errors='ignore')
+                frame = frame.applymap(lambda x: float(x) if isFloat(x) else numpy.nan if isinstance(x, str) and x.lower() in considerAsNaN else x)
+                frame.index = pandas.to_numeric(frame.index, errors='ignore')
+                frame.index = frame.index.map(lambda x: float(x) if isFloat(x) else numpy.nan if isinstance(x, str) and x.lower() in considerAsNaN else x)
+
                 inputFrames.append((options, frame))
         else:
             # Do not use pandas own comment option, as we only want to exclude lines that start with a comment character to allow it in the data
@@ -1224,8 +1230,9 @@ for input in args.input:
                 frame = DataframeActions.dropRowsByIds(frame, [0])
 
             frame = frame.apply(pandas.to_numeric, errors='ignore')
-            frame = frame.applymap(lambda x: float(x) if isFloat(x) else x)
-            frame = frame.applymap(lambda x: numpy.nan if isinstance(x, str) and x.lower() in considerAsNaN else x)
+            frame = frame.applymap(lambda x: float(x) if isFloat(x) else numpy.nan if isinstance(x, str) and x.lower() in considerAsNaN else x)
+            frame.index = pandas.to_numeric(frame.index, errors='ignore')
+            frame.index = frame.index.map(lambda x: float(x) if isFloat(x) else numpy.nan if isinstance(x, str) and x.lower() in considerAsNaN else x)
 
             options.frameCount = 1
             options.frameIndex = inputOptions.frameCount
@@ -1881,6 +1888,8 @@ for input in data:
                     data = [x for x in rawData if x is not None]
                     if expandDistribution is not None:
                         localExpand = [x for (x, y) in zip(expandDistribution, rawData) if y is not None]
+                        if options.distribution_scale > 0:
+                            data = [(options.distribution_scale / max(data)) * x for x in data]
                         # Expansion is using ceiling to avoid dropping of data points. Side effect is that it might lift the distribution a little bit up
                         data = list(numpy.repeat(localExpand, numpy.ceil(data).astype(numpy.int64)))
                     index = None
@@ -1900,10 +1909,10 @@ for input in data:
 
                 if (inputTraceIndex < len(options.trace_names)):
                     traceName = options.trace_names[inputTraceIndex]
-                elif (traceIndex < len(options.global_trace_names)):
-                    traceName = options.global_trace_names[traceIndex]
                 elif (options.use_name is not None):
                     traceName = options.use_name
+                elif (traceIndex < len(args.global_trace_names)):
+                    traceName = args.global_trace_names[traceIndex]
 
                 showInLegend = options.legend_entries == 'all'
                 if traceName not in legendEntries:
