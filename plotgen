@@ -40,7 +40,7 @@ import xopen
 import seaborn
 
 __prog__ = 'plotgen'
-__version__ = '0.5.6'
+__version__ = '0.5.7'
 __url__ = 'https://github.com/bgottschall/plotgen'
 
 
@@ -876,8 +876,8 @@ parserBoxPlotOptions.add_argument("--box-group-gap", help="gap between box group
 
 parserPlotAxisOptions = parser.add_argument_group('plot axis options')
 parserPlotAxisOptions.add_argument("--y-secondary", help="plot to secondary y-axis", default=False, sticky_default=True, nargs=0, sub_action="store_true", action=ChildAction, parent=inputFileArgument)
-parserPlotAxisOptions.add_argument("--y-title", help="y-axis title", default=None, sticky_default=True, action=ChildAction, parent=inputFileArgument)
-parserPlotAxisOptions.add_argument("--x-title", help="x-axis title", default=None, sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserPlotAxisOptions.add_argument("--y-title", help="y-axis title", type=escapedStr, default=None, sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserPlotAxisOptions.add_argument("--x-title", help="x-axis title", type=escapedStr, default=None, sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserPlotAxisOptions.add_argument("--y-title-standoff", help="added margin between tick labels and y-title in px", choices=Range(0,), default=None, sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserPlotAxisOptions.add_argument("--x-title-standoff", help="added margin between tick labels and x-title in px", choices=Range(0,), default=None, sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserPlotAxisOptions.add_argument("--y-type", help="choose type for y-axis (default %(default)s)", choices=['-', 'linear', 'log', 'date', 'category'], default='-', action=ChildAction, parent=inputFileArgument)
@@ -950,6 +950,7 @@ parserColourOptions.add_argument("--background-colour", help="set background col
 
 parserPlotGlobalOptions = parser.add_argument_group('plot global options')
 
+parserPlotGlobalOptions.add_argument("--global-trace-names", help="set trace names globally", default=[], type=escapedStr, nargs='+')
 parserPlotGlobalOptions.add_argument("--master-title", help="plot master title", type=escapedStr, default=None)
 parserPlotGlobalOptions.add_argument("--x-master-title", help="x-axis master title", type=escapedStr, default=None)
 parserPlotGlobalOptions.add_argument("--y-master-title", help="y-axis master title", type=escapedStr, default=None)
@@ -1899,6 +1900,8 @@ for input in data:
 
                 if (inputTraceIndex < len(options.trace_names)):
                     traceName = options.trace_names[inputTraceIndex]
+                elif (traceIndex < len(options.global_trace_names)):
+                    traceName = options.global_trace_names[traceIndex]
                 elif (options.use_name is not None):
                     traceName = options.use_name
 
