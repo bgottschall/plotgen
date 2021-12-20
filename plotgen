@@ -40,7 +40,7 @@ import xopen
 import seaborn
 
 __prog__ = 'plotgen'
-__version__ = '0.5.9'
+__version__ = '0.5.10'
 __url__ = 'https://github.com/bgottschall/plotgen'
 
 
@@ -252,12 +252,12 @@ def updateRange(_range, dataList):
 class DataframeActions:
     def filterFunction(frame, data, mode, quiet=False):
         filterMap = {
-            '=': lambda x: any(((numpy.isnan(x) and numpy.isnan(y)) or (float(x) == float(y) if isFloat([x, y]) else x == y) for y in data)),
+            '=': lambda x: any(((pandas.isna(x) and pandas.isna(y)) or (float(x) == float(y) if isFloat([x, y]) else x == y) for y in data)),
             '!=': lambda x: all(float(x) != float(y) if isFloat([x, y]) else x != y for y in data),
             '<': lambda x: any(float(x) < float(y) if isFloat([x, y]) else x < y for y in data),
             '>': lambda x: any(float(x) > float(y) if isFloat([x, y]) else x > y  for y in data),
-            '<=': lambda x: any(((numpy.isnan(x) and numpy.isnan(y)) or float(x) <= float(y) if isFloat([x, y]) else x <= y) for y in data),
-            '>=': lambda x: any(((numpy.isnan(x) and numpy.isnan(y)) or float(x) >= float(y) if isFloat([x, y]) else x >= y) for y in data)
+            '<=': lambda x: any(((pandas.isna(x) and pandas.isna(y)) or float(x) <= float(y) if isFloat([x, y]) else x <= y) for y in data),
+            '>=': lambda x: any(((pandas.isna(x) and pandas.isna(y)) or float(x) >= float(y) if isFloat([x, y]) else x >= y) for y in data)
         }
         if mode not in filterMap:
             if not quiet:
