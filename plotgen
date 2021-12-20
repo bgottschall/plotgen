@@ -40,7 +40,7 @@ import xopen
 import seaborn
 
 __prog__ = 'plotgen'
-__version__ = '0.5.8'
+__version__ = '0.5.9'
 __url__ = 'https://github.com/bgottschall/plotgen'
 
 
@@ -54,6 +54,10 @@ def escapedStr(val: str):
 
 
 def isFloat(val):
+    if isinstance(val, dict):
+        return all(isFloat(x) for x in val.values())
+    if isinstance(val, list):
+        return all(isFloat(x) for x in val)
     if val is None:
         return False
     try:
@@ -246,17 +250,18 @@ def updateRange(_range, dataList):
 
 
 class DataframeActions:
-    def filterFunction(frame, data, mode):
+    def filterFunction(frame, data, mode, quiet=False):
         filterMap = {
-            '=': lambda x: any(x == y for y in data),
-            '<': lambda x: any(x < y for y in data),
-            '>': lambda x: any(x > y for y in data),
-            '!=': lambda x: all(x != y for y in data),
-            '<=': lambda x: any(x <= y for y in data),
-            '>=': lambda x: any(x >= y for y in data)
+            '=': lambda x: any(((numpy.isnan(x) and numpy.isnan(y)) or (float(x) == float(y) if isFloat([x, y]) else x == y) for y in data)),
+            '!=': lambda x: all(float(x) != float(y) if isFloat([x, y]) else x != y for y in data),
+            '<': lambda x: any(float(x) < float(y) if isFloat([x, y]) else x < y for y in data),
+            '>': lambda x: any(float(x) > float(y) if isFloat([x, y]) else x > y  for y in data),
+            '<=': lambda x: any(((numpy.isnan(x) and numpy.isnan(y)) or float(x) <= float(y) if isFloat([x, y]) else x <= y) for y in data),
+            '>=': lambda x: any(((numpy.isnan(x) and numpy.isnan(y)) or float(x) >= float(y) if isFloat([x, y]) else x >= y) for y in data)
         }
-
         if mode not in filterMap:
+            if not quiet:
+                raise Exception(f'ERROR: could not find condition {mode}')
             return frame
         else:
             return frame.apply(filterMap[mode])
@@ -291,18 +296,16 @@ class DataframeActions:
     def selectRowsByIds(dataframe, rowIds):
         return dataframe.iloc[rowIds, :]
 
-    def filterRowsByColumnData(dataframe, columnIds, data, mode='='):
-        if not isinstance(data, list):
-            data = [data]
-        data = [float(x) if isFloat(x) else x for x in data]
+    def filterRowsByColumnData(dataframe, columnIds, data):
+        mode = data[0]
+        data = [float(x) if isFloat(x) else x for x in data[1:]]
         for columnId in columnIds:
             dataframe = dataframe[DataframeActions.filterFunction(dataframe.iloc[:, columnId], data, mode)]
         return dataframe
 
-    def filterColumnsByRowData(dataframe, rowIds, data, mode='='):
-        if not isinstance(data, list):
-            data = [data]
-        data = [float(x) if isFloat(x) else x for x in data]
+    def filterColumnsByRowData(dataframe, rowIds, data):
+        mode = data[0]
+        data = [float(x) if isFloat(x) else x for x in data[1:]]
         for rowId in rowIds:
             dataframe = dataframe.loc[:, DataframeActions.filterFunction(dataframe.iloc[rowId, :], data, mode)]
         return dataframe
@@ -440,50 +443,47 @@ class DataframeActions:
     def abs(dataframe):
         return dataframe.abs()
 
-    def applyOnRows(dataframe, applyRowIds, targetRowIds=[], function='abs', parameter='1', applyMode='normal', quiet=False):
+    def applyOnRows(dataframe, applyRowIds, targetRowIds=[], function=['abs'], applyMode='normal', quiet=False):
         if not isinstance(applyRowIds, list):
             applyRowIds = [applyRowIds]
         if not isinstance(targetRowIds, list):
             targetRowIds = [targetRowIds]
+        if not isinstance(function, list):
+            function = [function]
 
-        parameter = numpy.nan if parameter in considerAsNaN else int(parameter) if str(parameter).isdigit() else float(parameter) if isFloat(parameter) else parameter
+        functionName = function[0]
+        functionParams = [numpy.nan if x in considerAsNaN else int(x) if str(x).isdigit() else float(x) if isFloat(x) else x for x in function[1:]]
 
         colWarning = False
-        constMap = {
-            'zero': 0,
-            'one': 1,
-            'nan': numpy.nan,
-            'set': parameter
-        }
-
-        setMap = {
-            'setzero': 0,
-            'setone': 1,
-            'setnan': numpy.nan,
-        }
 
         # These functions are applied on each row individually, targetRowIds will be considered as applyRowIds as well
         pandasSelfFunctions = ['abs', 'cumsum', 'cummax', 'cummin', 'cumprod', 'rank']
-        specialSelfFunctions = list(setMap.keys()) + list(constMap.keys()) + ['polyfit']
+        specialSelfFunctions = ['set', 'cset', 'polyfit']
 
         with pandas.option_context('mode.chained_assignment', None):
-            if function in (pandasSelfFunctions + specialSelfFunctions):
+            if functionName in (pandasSelfFunctions + specialSelfFunctions):
                 applyRowIds += targetRowIds
 
-                if function in pandasSelfFunctions:
-                    if function == 'abs':
+                if functionName in pandasSelfFunctions:
+                    if functionName == 'abs':
                         dataframe.iloc[applyRowIds, :] = dataframe.iloc[applyRowIds, :].abs().values
                     else:
-                        dataframe.iloc[applyRowIds, :] = getattr(dataframe.iloc[applyRowIds, :], function)(axis=1).values
-                elif function in constMap:
-                    dataframe.iloc[applyRowIds, :] = constMap[function]
-                elif function in setMap:
-                    dataframe.iloc[applyRowIds, :] = dataframe.iloc[applyRowIds, :].replace(parameter, setMap[function])
-                elif function == 'polyfit':
+                        dataframe.iloc[applyRowIds, :] = getattr(dataframe.iloc[applyRowIds, :], functionName)(axis=1).values
+                elif functionName == 'set':
+                    if len(functionParams) == 0:
+                        print('WARNING: no parameters given for function set, using NaN instead!', file=sys.stderr)
+                        functionParams = [numpy.nan]
+                    dataframe.iloc[applyRowIds, :] = functionParams[0]
+                elif functionName == 'cset':
+                    if len(functionParams) < 3:
+                        raise Exception('ERROR: function conditional set requires minimum 3 parameters')
+                    for rowId in applyRowIds:
+                        dataframe.loc[:, DataframeActions.filterFunction(dataframe.iloc[rowId, :], functionParams[1:-1], functionParams[0])].iloc[rowId] = functionParams[-1]
+                elif functionName == 'polyfit':
                     try:
-                        parameter = int(parameter)
+                        fitDim = 1 if len(functionParams) == 0 else int(functionParams[0])
                     except Exception:
-                        raise 'ERROR: apply parameter needs to be an integer for polyfit'
+                        raise Exception('ERROR: polyfit function parameter needs to be an integer')
                     for rowIdx in applyRowIds:
                         fitTarget = dataframe.iloc[rowIdx, :].apply(pandas.to_numeric, errors='coerce')
                         if not quiet and fitTarget.isna().values.any():
@@ -495,7 +495,7 @@ class DataframeActions:
                                 colWarning = True
                                 print('WARNING: columns are not numeric, will fit along a static number series!', file=sys.stderr)
                             fitAlong = list(range(len(fitTarget)))
-                        dataframe.iloc[rowIdx, :] = numpy.polyval(numpy.polyfit(fitAlong, fitTarget, parameter), fitAlong)
+                        dataframe.iloc[rowIdx, :] = numpy.polyval(numpy.polyfit(fitAlong, fitTarget, fitDim), fitAlong)
 
             else:
                 # All other functions are computations between applyRowIds and targetRowIds
@@ -508,59 +508,55 @@ class DataframeActions:
                     if applyMode == 'reverse':
                         targetRowIds, applyRowIds = applyRowIds, targetRowIds
 
-                    if function == 'copy':
+                    if functionName == 'copy':
                         if len(applyRowIds) > 0 and not args.quiet:
-                            print('WARNING: only the last row has an effect with apply function set!', file=sys.stderr)
+                            print('WARNING: only the last row has an effect with apply function copy!', file=sys.stderr)
                         dataframe.iloc[targetRowIds, :] = dataframe.iloc[targetRowIds, :].apply(lambda _: dataframe.iloc[applyRowIds[-1], :], axis=1).values
                     else:
                         applyRows = [dataframe.iloc[rowIdx, :].apply(pandas.to_numeric, errors='coerce') for rowIdx in applyRowIds]
                         for applyRow in applyRows:
-                            dataframe.iloc[targetRowIds, :] = getattr(dataframe.iloc[targetRowIds, :].apply(pandas.to_numeric, errors="coerce"), function)(applyRow, axis=1).values
+                            dataframe.iloc[targetRowIds, :] = getattr(dataframe.iloc[targetRowIds, :].apply(pandas.to_numeric, errors="coerce"), functionName)(applyRow, axis=1).values
         return dataframe
 
-    def applyOnColumns(dataframe, applyColumnIds, targetColumnIds=[], function='abs', parameter='1', applyMode='normal', quiet=False):
+    def applyOnColumns(dataframe, applyColumnIds, targetColumnIds=[], function=['abs'], applyMode='normal', quiet=False):
         if not isinstance(applyColumnIds, list):
             applyColumnIds = [applyColumnIds]
         if not isinstance(targetColumnIds, list):
             targetColumnIds = [targetColumnIds]
+        if not isinstance(function, list):
+            function = [function]
 
-        parameter = numpy.nan if parameter in considerAsNaN else int(parameter) if str(parameter).isdigit() else float(parameter) if isFloat(parameter) else parameter
+        functionName = function[0]
+        functionParams = [numpy.nan if x in considerAsNaN else int(x) if str(x).isdigit() else float(x) if isFloat(x) else x for x in function[1:]]
 
         indexWarning = False
-        constMap = {
-            'zero': 0,
-            'one': 1,
-            'nan': numpy.nan,
-            'set': parameter
-        }
-
-        setMap = {
-            'setzero': 0,
-            'setone': 1,
-            'setnan': numpy.nan,
-        }
         # These functions are applied on each row individually, targetRowIds will be considered as applyRowIds as well
         pandasSelfFunctions = ['abs', 'cumsum', 'cummax', 'cummin', 'cumprod', 'rank', 'nan']
-        specialSelfFunctions = list(setMap.keys()) + list(constMap.keys()) + ['polyfit']
+        specialSelfFunctions = ['set', 'cset', 'polyfit']
 
         with pandas.option_context('mode.chained_assignment', None):
-            if function in (pandasSelfFunctions + specialSelfFunctions):
+            if functionName in (pandasSelfFunctions + specialSelfFunctions):
                 applyColumnIds += targetColumnIds
 
-                if function in pandasSelfFunctions:
-                    if function == 'abs':
+                if functionName in pandasSelfFunctions:
+                    if functionName == 'abs':
                         dataframe.iloc[:, applyColumnIds] = dataframe.iloc[:, applyColumnIds].abs().values
                     else:
-                        dataframe.iloc[:, applyColumnIds] = getattr(dataframe.iloc[:, applyColumnIds], function)(axis=0).values
-                elif function in constMap:
-                    dataframe.iloc[:, applyColumnIds] = constMap[function]
-                elif function in setMap:
-                    dataframe.iloc[:, applyColumnIds] = dataframe.iloc[:, applyColumnIds].replace(parameter, setMap[function])
-                elif function == 'polyfit':
+                        dataframe.iloc[:, applyColumnIds] = getattr(dataframe.iloc[:, applyColumnIds], functionName)(axis=0).values
+                elif functionName == 'set':
+                    if len(functionParams) < 1:
+                        raise Exception('ERROR: function set requires a parameters')
+                    dataframe.iloc[:, applyColumnIds] = functionParams[0]
+                elif functionName == 'cset':
+                    if len(functionParams) < 3:
+                        raise Exception('ERROR: function conditional set requires 3 parameters')
+                    for columnId in applyColumnIds:
+                        dataframe.iloc[DataframeActions.filterFunction(dataframe.iloc[:, columnId], functionParams[1:-1], functionParams[0]), columnId] = functionParams[-1]
+                elif functionName == 'polyfit':
                     try:
                         parameter = int(parameter)
                     except Exception:
-                        raise 'ERROR: apply parameter needs to be an integer for polyfit'
+                        raise Exception('ERROR: apply parameter needs to be an integer for polyfit')
                     for columnIdx in applyColumnIds:
                         fitTarget = dataframe.iloc[:, columnIdx].apply(pandas.to_numeric, errors='coerce')
                         if not quiet and fitTarget.isna().values.any():
@@ -585,14 +581,14 @@ class DataframeActions:
                     if applyMode == 'reverse':
                         targetColumnIds, applyColumnIds = applyColumnIds, targetColumnIds
 
-                    if function == 'copy':
+                    if functionName == 'copy':
                         if len(applyColumnIds) > 0 and not args.quiet:
                             print('WARNING: only the last column has an effect with apply function copy!', file=sys.stderr)
                         dataframe.iloc[:, targetColumnIds] = dataframe.iloc[:, targetColumnIds].apply(lambda _: dataframe.iloc[:, applyColumnIds[-1]], axis=0).values
                     else:
                         applyColumns = [dataframe.iloc[:, columnIdx].apply(pandas.to_numeric, errors='coerce') for columnIdx in applyColumnIds]
                         for applyColumn in applyColumns:
-                            dataframe.iloc[:, targetColumnIds] = getattr(dataframe.iloc[:, targetColumnIds].apply(pandas.to_numeric, errors="coerce"), function)(applyColumn, axis=0).values
+                            dataframe.iloc[:, targetColumnIds] = getattr(dataframe.iloc[:, targetColumnIds].apply(pandas.to_numeric, errors="coerce"), functionName)(applyColumn, axis=0).values
         return dataframe
 
     def addRow(dataframe, name, function='mean', where='back'):
@@ -731,7 +727,10 @@ parserFileOptions.add_argument("--no-index", help="do not use a index column", d
 
 parserFileOptions.add_argument("--index-icolumn", help="set index column index", type=int, sticky_default=True, choices=Range(None, None), default=None, action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--index-column", help="set index column", default=None, type=str, sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--columns-irow", help="set index column", type=int, sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--columns-row", help="set index column", default=None, type=str, sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--reset-index", help="reset index back into dataframe as first column", default=False, nargs=0, sub_action="store_true", sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--reset-columns", help="reset index back into dataframe as first column", default=False, nargs=0, sub_action="store_true", sticky_default=True, action=ChildAction, parent=inputFileArgument)
 
 parserFileOptions.add_argument("--select-mode", help="select row/columns policy (default %(default)s)", type=str, default='all', choices=['all', 'first', 'last'], action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--ignore-icolumns", help="ignore column indexes", type=SliceType(), default=[], sticky_default=True, nargs='+', action=ChildAction, parent=inputFileArgument)
@@ -748,7 +747,7 @@ parserFileOptions.add_argument("--select-columns", help="select columns", type=s
 parserFileOptions.add_argument("--select-iframes", help="select frame indexes", type=SliceType(), default=[], sticky_default=True, nargs='+', action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--select-frames", help="select frames", type=str, default=[], sticky_default=True, nargs='+', action=ChildAction, parent=inputFileArgument)
 
-parserFileOptions.add_argument("--filter-mode", help="filter data mode (default %(default)s)", type=str, default="=", choices=['=', '!=', '<', '>', '<=', '>=', '!='], action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--compare-mode", help="filter data mode (default %(default)s)", type=str, default="=", choices=['=', '!=', '<', '>', '<=', '>=', '!='], action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--filter-irows", help="filter data from rows after indexes", type=str, default=[], sticky_default=True, nargs='+', action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--filter-row", help="filter data from rows", type=str, default=[], sticky_default=True, nargs='+', action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--filter-icolumns", help="filter data from columns after indexes", type=str, default=[], sticky_default=True, nargs='+', action=ChildAction, parent=inputFileArgument)
@@ -787,8 +786,7 @@ parserFileOptions.add_argument("--group-by-rows", help="group by this row", type
 
 parserFileOptions.add_argument("--abs", help="convert all values to absolute values", type=str, default=False, nargs=0, sub_action="store_true", sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--apply-mode", help="apply first row/column parameter on all others or in reverse (default %(default)s)", type=str, default='normal', choices=['normal', 'reverse'], action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--apply-parameter", help="additional function paramter (e.g. dimension of polyfit)", type=str, default='1', action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--apply-function", help="use this function to compute new row/column", type=str, default='mean', choices=['add', 'radd', 'sub', 'rsub', 'mul', 'rmul', 'div', 'rdiv', 'mod', 'rmod', 'pow', 'rpow', 'cumsum', 'cummax', 'cummin', 'cumprod', 'rank', 'nan', 'zero', 'one', 'abs', 'set', 'copy', 'polyfit', 'setzero', 'setone', 'setnan'], action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--apply-function", help="use this function to compute new row/column", type=str, nargs='+', default=['mean'], action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--apply-icolumns", help="compute function on multiple column indexes", type=SliceType(), default=[], nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--apply-irows", help="compute function on multiple row indexes", type=SliceType(), default=[], nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--apply-columns", help="compute function on multiple columns", type=str, default=[], nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
@@ -1246,13 +1244,11 @@ for input in args.input:
             print("DEBUG: done reading file", file=sys.stderr)
 
     selectMode = 'all'
-    filterMode = '='
     sortFunction = 'none'
     addAt = 'back'
     addFunction = 'mean'
     applyMode = 'normal'
-    applyParameter = '1'
-    applyFunction = 'mean'
+    applyFunction = ['mean']
     groupFunction = 'sum'
     sortOrder = 'desc'
     outputPrecision = None
@@ -1260,27 +1256,33 @@ for input in args.input:
     focusedFrames = list(range(len(inputFrames)))
 
     for (optionName, optionValue) in input['args'].ordered_args:
-        multiFrameActions = ['print_precision', 'select_mode', 'filter_mode', 'sort_function', 'sort_order', 'add_at', 'add_function', 'apply_mode', 'apply_function', 'group_function', 'apply_parameter', 'join', 'file', 'pickle', 'split_column', 'split_icolumn', 'split_row', 'split_irow', 'focus_iframes', 'defocus_iframes', 'focus_frames', 'defocus_frames', 'select_iframes', 'select_frames', 'ignore_iframes', 'ignore_frames', 'frame_names']
+        multiFrameActions = ['print_precision', 'select_mode', 'sort_function', 'sort_order', 'add_at', 'add_function', 'apply_mode', 'apply_function', 'group_function', 'join', 'file', 'pickle', 'split_column', 'split_icolumn', 'split_row', 'split_irow', 'focus_iframes', 'defocus_iframes', 'focus_frames', 'defocus_frames', 'select_iframes', 'select_frames', 'ignore_iframes', 'ignore_frames', 'frame_names']
         if optionName not in multiFrameActions:
             for _index, (frameOptions, frame) in enumerate(inputFrames):
                 if (_index) not in focusedFrames:
                     continue
                 if optionName == 'transpose':
                     frame = DataframeActions.transpose(frame)
-                elif optionName == 'index_column':
+                elif optionName == 'index_column' or optionName == 'columns_row':
+                    if optionName == 'columns_row':
+                        frame = frame.T
                     columnIds = DataframeActions.getColumnIds(frame, optionValue, selectMode)
-                    if len(columnIds) > 1 and not args.quiet:
-                        print('WARNING: cannot set multiple index columns', file=sys.stderr)
                     if (len(columnIds) > 0):
                         frame = DataframeActions.setIndexColumnByIdx(frame, columnIds[0])
-                elif optionName == 'index_icolumn':
+                    if optionName == 'columns_row':
+                        frame = frame.T
+                elif optionName == 'index_icolumn' or optionName == 'columns_irow':
+                    if optionName == 'columns_irow':
+                        frame = frame.T
                     columnIds = DataframeActions.sliceToColumnIds(frame, optionValue)
-                    if len(columnIds) > 1 and not args.quiet:
-                        print('WARNING: cannot set multiple index columns', file=sys.stderr)
                     if (len(columnIds) > 0):
                         frame = DataframeActions.setIndexColumnByIdx(frame, columnIds[0])
+                    if optionName == 'columns_irow':
+                        frame = frame.T
                 elif optionName == 'reset_index':
                     frame = DataframeActions.resetIndex(frame)
+                elif optionName == 'reset_columns':
+                    frame = DataframeActions.resetIndex(frame.T).T
                 elif optionName == 'ignore_columns':
                     columnIds = DataframeActions.getColumnIds(frame, optionValue, selectMode, True)
                     frame = DataframeActions.dropColumnsByIds(frame, columnIds)
@@ -1310,41 +1312,41 @@ for input in args.input:
                     if len(columnIds) == 0:
                         if not args.quiet:
                             print(f"WARNING: column '{optionValue[0]}' not found", file=sys.stderr)
-                    elif len(optionValue) < 2:
+                    elif len(optionValue) < 3:
                         if not args.quiet:
-                            print('WARNING: nothing provided to filter after', file=sys.stderr)
+                            print('WARNING: filter condition and/or filter data not provided', file=sys.stderr)
                     else:
-                        frame = DataframeActions.filterRowsByColumnData(frame, columnIds, optionValue[1:], filterMode)
+                        frame = DataframeActions.filterRowsByColumnData(frame, columnIds, optionValue[1:])
                 elif optionName == 'filter_icolumns':
                     if not isSliceType(optionValue[0]):
                         if not args.quiet:
                             print('WARNING: invalid slice provided to filter data', file=sys.stderr)
-                    elif len(optionValue) < 2:
+                    elif len(optionValue) < 3:
                         if not args.quiet:
-                            print('WARNING: nothing provided to filter after', file=sys.stderr)
+                            print('WARNING: filter condition and/or filter data not provided', file=sys.stderr)
                     else:
                         columnIds = DataframeActions.sliceToColumnIds(frame, SliceType()(optionValue[0]))
-                        frame = DataframeActions.filterRowsByColumnData(frame, columnIds, optionValue[1:], filterMode)
+                        frame = DataframeActions.filterRowsByColumnData(frame, columnIds, optionValue[1:])
                 elif optionName == 'filter_row':
                     rowIds = DataframeActions.getRowIds(frame, optionValue[0], selectMode, True)
                     if len(rowIds) == 0:
                         if not args.quiet:
                             print(f"WARNING: row '{optionValue[0]}' not found", file=sys.stderr)
-                    elif len(optionValue) < 2:
+                    elif len(optionValue) < 3:
                         if not args.quiet:
-                            print('WARNING: nothing provided to filter after', file=sys.stderr)
+                            print('WARNING: filter condition and/or filter data not provided', file=sys.stderr)
                     else:
-                        frame = DataframeActions.filterColumnsByRowData(frame, rowIds, optionValue[1:], filterMode)
+                        frame = DataframeActions.filterColumnsByRowData(frame, rowIds, optionValue[1:])
                 elif optionName == 'filter_irows':
                     if not isSliceType(optionValue[0]):
                         if not args.quiet:
                             print('WARNING: invalid slice provided to filter data', file=sys.stderr)
-                    elif len(optionValue) < 2:
+                    elif len(optionValue) < 3:
                         if not args.quiet:
-                            print('WARNING: nothing provided to filter after', file=sys.stderr)
+                            print('WARNING: filter condition and/or filter data not provided', file=sys.stderr)
                     else:
                         rowIds = DataframeActions.sliceToRowIds(frame, SliceType()(optionValue[0]))
-                        frame = DataframeActions.filterColumnsByRowData(frame, rowIds, optionValue[1:], filterMode)
+                        frame = DataframeActions.filterColumnsByRowData(frame, rowIds, optionValue[1:])
                 elif optionName == 'reverse_columns':
                     frame = DataframeActions.reverseColumns(frame)
                 elif optionName == 'reverse_rows':
@@ -1410,15 +1412,15 @@ for input in args.input:
                 elif optionName == 'apply_irows':
                     applyRowIds = DataframeActions.sliceToRowIds(frame, optionValue[0])
                     targetRowIds = DataframeActions.sliceToRowIds(frame, optionValue[1:]) if len(optionValue) > 1 else []
-                    frame = DataframeActions.applyOnRows(frame, applyRowIds, targetRowIds, applyFunction, applyParameter, applyMode)
+                    frame = DataframeActions.applyOnRows(frame, applyRowIds, targetRowIds, applyFunction, applyMode)
                 elif optionName == 'apply_rows':
                     applyRowIds = DataframeActions.getRowIds(frame, optionValue[0])
                     targetRowIds = DataframeActions.getRowIds(frame, optionValue[1:]) if len(optionValue) > 1 else []
-                    frame = DataframeActions.applyOnRows(frame, applyRowIds, targetRowIds, applyFunction, applyParameter, applyMode)
+                    frame = DataframeActions.applyOnRows(frame, applyRowIds, targetRowIds, applyFunction, applyMode)
                 elif optionName == 'apply_icolumns':
                     applyColumnIds = DataframeActions.sliceToColumnIds(frame, optionValue[0])
                     targetColumnIds = DataframeActions.sliceToColumnIds(frame, optionValue[1:]) if len(optionValue) > 1 else []
-                    frame = DataframeActions.applyOnColumns(frame, applyColumnIds, targetColumnIds, applyFunction, applyParameter, applyMode)
+                    frame = DataframeActions.applyOnColumns(frame, applyColumnIds, targetColumnIds, applyFunction, applyMode)
                 elif optionName == 'apply_columns':
                     applyColumnIds = DataframeActions.getColumnIds(frame, optionValue[0])
                     targetColumnIds = DataframeActions.getColumnIds(frame, optionValue[1:]) if len(optionValue) > 1 else []
@@ -1493,8 +1495,6 @@ for input in args.input:
                 outputPrecision = None if optionValue == 'default' else int(optionValue)
             elif optionName == 'select_mode':
                 selectMode = optionValue
-            elif optionName == 'filter_mode':
-                filterMode = optionValue
             elif optionName == 'sort_function':
                 sortFunction = optionValue
             elif optionName == 'sort_order':
@@ -1509,8 +1509,6 @@ for input in args.input:
                 applyFunction = optionValue
             elif optionName == 'group_function':
                 groupFunction = optionValue
-            elif optionName == 'apply_parameter':
-                applyParameter = optionValue
             elif optionName == 'join':
                 newOptions = copy.deepcopy(inputOptions)
                 newOptions.filenames = []
