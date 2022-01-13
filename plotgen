@@ -40,7 +40,7 @@ import xopen
 import seaborn
 
 __prog__ = 'plotgen'
-__version__ = '0.5.10'
+__version__ = '0.5.11'
 __url__ = 'https://github.com/bgottschall/plotgen'
 
 
@@ -255,9 +255,11 @@ class DataframeActions:
             '=': lambda x: any(((pandas.isna(x) and pandas.isna(y)) or (float(x) == float(y) if isFloat([x, y]) else x == y) for y in data)),
             '!=': lambda x: all(float(x) != float(y) if isFloat([x, y]) else x != y for y in data),
             '<': lambda x: any(float(x) < float(y) if isFloat([x, y]) else x < y for y in data),
-            '>': lambda x: any(float(x) > float(y) if isFloat([x, y]) else x > y  for y in data),
+            '>': lambda x: any(float(x) > float(y) if isFloat([x, y]) else x > y for y in data),
             '<=': lambda x: any(((pandas.isna(x) and pandas.isna(y)) or float(x) <= float(y) if isFloat([x, y]) else x <= y) for y in data),
-            '>=': lambda x: any(((pandas.isna(x) and pandas.isna(y)) or float(x) >= float(y) if isFloat([x, y]) else x >= y) for y in data)
+            '>=': lambda x: any(((pandas.isna(x) and pandas.isna(y)) or float(x) >= float(y) if isFloat([x, y]) else x >= y) for y in data),
+            'in': lambda x: any(str(x) in str(y) for y in data),
+            'notin': lambda x: any(str(x) not in str(y) for y in data),
         }
         if mode not in filterMap:
             if not quiet:
@@ -300,7 +302,7 @@ class DataframeActions:
         mode = data[0]
         data = [float(x) if isFloat(x) else x for x in data[1:]]
         for columnId in columnIds:
-            dataframe = dataframe[DataframeActions.filterFunction(dataframe.iloc[:, columnId], data, mode)]
+            dataframe = dataframe.loc[DataframeActions.filterFunction(dataframe.iloc[:, columnId], data, mode)]
         return dataframe
 
     def filterColumnsByRowData(dataframe, rowIds, data):
@@ -315,7 +317,7 @@ class DataframeActions:
             columns = [columns]
         columnIds = []
         for col in columns:
-            if col not in [str(x) for x in dataframe.columns]:
+            if str(col) not in [str(x) for x in dataframe.columns]:
                 isSlice = True
                 try:
                     s = SliceType()(col)
@@ -327,7 +329,7 @@ class DataframeActions:
             else:
                 selection = reversed(list(enumerate(dataframe.columns.tolist()))) if mode == 'last' else enumerate(dataframe.columns.tolist())
                 for i, fcol in selection:
-                    if str(fcol) == col:
+                    if str(fcol) == str(col):
                         columnIds.append(i)
                         if mode != 'all':
                             break
@@ -338,7 +340,7 @@ class DataframeActions:
             rows = [rows]
         rowIds = []
         for row in rows:
-            if row not in [str(x) for x in dataframe.index]:
+            if str(row) not in [str(x) for x in dataframe.index]:
                 isSlice = True
                 try:
                     s = SliceType()(row)
@@ -350,7 +352,7 @@ class DataframeActions:
             else:
                 selection = reversed(list(enumerate(dataframe.index.tolist()))) if mode == 'last' else enumerate(dataframe.index.tolist())
                 for i, frow in selection:
-                    if str(frow) == row:
+                    if str(frow) == str(row):
                         rowIds.append(i)
                         if mode != 'all':
                             break
@@ -478,7 +480,7 @@ class DataframeActions:
                     if len(functionParams) < 3:
                         raise Exception('ERROR: function conditional set requires minimum 3 parameters')
                     for rowId in applyRowIds:
-                        dataframe.loc[:, DataframeActions.filterFunction(dataframe.iloc[rowId, :], functionParams[1:-1], functionParams[0])].iloc[rowId] = functionParams[-1]
+                        dataframe.iloc[rowId, DataframeActions.filterFunction(dataframe.iloc[rowId, :], functionParams[1:-1], functionParams[0])] = functionParams[-1]
                 elif functionName == 'polyfit':
                     try:
                         fitDim = 1 if len(functionParams) == 0 else int(functionParams[0])
@@ -554,7 +556,7 @@ class DataframeActions:
                         dataframe.iloc[DataframeActions.filterFunction(dataframe.iloc[:, columnId], functionParams[1:-1], functionParams[0]), columnId] = functionParams[-1]
                 elif functionName == 'polyfit':
                     try:
-                        parameter = int(parameter)
+                        fitDim = 1 if len(functionParams) == 0 else int(functionParams[0])
                     except Exception:
                         raise Exception('ERROR: apply parameter needs to be an integer for polyfit')
                     for columnIdx in applyColumnIds:
@@ -568,7 +570,7 @@ class DataframeActions:
                                 indexWarning = True
                                 print('WARNING: index is not numeric, will fit along a static number series!', file=sys.stderr)
                             fitAlong = list(range(len(fitTarget)))
-                        dataframe.iloc[:, columnIdx] = numpy.polyval(numpy.polyfit(fitAlong, fitTarget, parameter), fitAlong)
+                        dataframe.iloc[:, columnIdx] = numpy.polyval(numpy.polyfit(fitAlong, fitTarget, fitDim), fitAlong)
 
             else:
                 # All other functions are computations between applyColumnIds and targetColumnIds
@@ -1269,6 +1271,7 @@ for input in args.input:
                     columnIds = DataframeActions.getColumnIds(frame, optionValue, selectMode)
                     if (len(columnIds) > 0):
                         frame = DataframeActions.setIndexColumnByIdx(frame, columnIds[0])
+                        frame = DataframeActions.dropColumnsByIds(frame, [columnIds[0]])
                     if optionName == 'columns_row':
                         frame = frame.T
                 elif optionName == 'index_icolumn' or optionName == 'columns_irow':
@@ -1424,7 +1427,7 @@ for input in args.input:
                 elif optionName == 'apply_columns':
                     applyColumnIds = DataframeActions.getColumnIds(frame, optionValue[0])
                     targetColumnIds = DataframeActions.getColumnIds(frame, optionValue[1:]) if len(optionValue) > 1 else []
-                    frame = DataframeActions.applyOnColumns(frame, applyColumnIds, targetColumnIds, applyFunction, applyParameter, applyMode)
+                    frame = DataframeActions.applyOnColumns(frame, applyColumnIds, targetColumnIds, applyFunction, applyMode)
                 elif optionName == 'group_by_irows':
                     if 'columns' in optionValue:
                         if (len(optionValue) > 1 and not args.quiet):
