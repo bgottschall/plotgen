@@ -40,7 +40,7 @@ import xopen
 import seaborn
 
 __prog__ = 'plotgen'
-__version__ = '0.5.11'
+__version__ = '0.5.12'
 __url__ = 'https://github.com/bgottschall/plotgen'
 
 
@@ -258,8 +258,12 @@ class DataframeActions:
             '>': lambda x: any(float(x) > float(y) if isFloat([x, y]) else x > y for y in data),
             '<=': lambda x: any(((pandas.isna(x) and pandas.isna(y)) or float(x) <= float(y) if isFloat([x, y]) else x <= y) for y in data),
             '>=': lambda x: any(((pandas.isna(x) and pandas.isna(y)) or float(x) >= float(y) if isFloat([x, y]) else x >= y) for y in data),
-            'in': lambda x: any(str(x) in str(y) for y in data),
-            'notin': lambda x: any(str(x) not in str(y) for y in data),
+            'in': lambda x: any(str(y) in str(x) for y in data),
+            'notin': lambda x: all(str(y) not in str(x) for y in data),
+            'xor': lambda x: all(bool(int(y) ^ int(x)) if str(x).isdigit and str(y).isdigit else False for y in data),
+            'nor': lambda x: all(not bool(int(y) ^ int(x)) if str(x).isdigit and str(y).isdigit else False for y in data),
+            'and': lambda x: all(bool(int(y) & int(x)) if str(x).isdigit and str(y).isdigit else False for y in data),
+            'nand': lambda x: all(not bool(int(y) & int(x)) if str(x).isdigit and str(y).isdigit else False for y in data),
         }
         if mode not in filterMap:
             if not quiet:
@@ -1013,7 +1017,7 @@ if (not args.per_trace_colours and not args.per_frame_colours and not args.per_i
 elif (args.per_frame_colours):
     args.per_input_colours = False
 
-
+# Sanitize arguments
 for input in args.input:
     options = input['args']
     # options.ignore_icolumns = list(set(options.ignore_icolumns))
@@ -1280,6 +1284,7 @@ for input in args.input:
                     columnIds = DataframeActions.sliceToColumnIds(frame, optionValue)
                     if (len(columnIds) > 0):
                         frame = DataframeActions.setIndexColumnByIdx(frame, columnIds[0])
+                        frame = DataframeActions.dropColumnsByIds(frame, [columnIds[0]])
                     if optionName == 'columns_irow':
                         frame = frame.T
                 elif optionName == 'reset_index':
@@ -1321,12 +1326,15 @@ for input in args.input:
                     else:
                         frame = DataframeActions.filterRowsByColumnData(frame, columnIds, optionValue[1:])
                 elif optionName == 'filter_icolumns':
-                    if not isSliceType(optionValue[0]):
+                    if optionValue[0] != 'index' and not isSliceType(optionValue[0]):
                         if not args.quiet:
                             print('WARNING: invalid slice provided to filter data', file=sys.stderr)
                     elif len(optionValue) < 3:
                         if not args.quiet:
                             print('WARNING: filter condition and/or filter data not provided', file=sys.stderr)
+                    elif optionValue[0] == 'index':
+                        frame = DataframeActions.filterRowsByColumnData(DataframeActions.resetIndex(frame), [0], optionValue[1:])
+                        frame = DataframeActions.dropColumnsByIds(DataframeActions.setIndexColumnByIdx(frame, 0), [0])
                     else:
                         columnIds = DataframeActions.sliceToColumnIds(frame, SliceType()(optionValue[0]))
                         frame = DataframeActions.filterRowsByColumnData(frame, columnIds, optionValue[1:])
@@ -1341,12 +1349,15 @@ for input in args.input:
                     else:
                         frame = DataframeActions.filterColumnsByRowData(frame, rowIds, optionValue[1:])
                 elif optionName == 'filter_irows':
-                    if not isSliceType(optionValue[0]):
+                    if optionValue[0] != 'columns' and not isSliceType(optionValue[0]):
                         if not args.quiet:
                             print('WARNING: invalid slice provided to filter data', file=sys.stderr)
                     elif len(optionValue) < 3:
                         if not args.quiet:
                             print('WARNING: filter condition and/or filter data not provided', file=sys.stderr)
+                    elif optionValue[0] == 'columns':
+                        frame = DataframeActions.filterRowsByColumnData(DataframeActions.resetIndex(frame.T), [0], optionValue[1:])
+                        frame = DataframeActions.dropColumnsByIds(DataframeActions.setIndexColumnByIdx(frame, 0), [0]).T
                     else:
                         rowIds = DataframeActions.sliceToRowIds(frame, SliceType()(optionValue[0]))
                         frame = DataframeActions.filterColumnsByRowData(frame, rowIds, optionValue[1:])
