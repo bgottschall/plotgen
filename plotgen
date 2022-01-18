@@ -40,7 +40,7 @@ import xopen
 import seaborn
 
 __prog__ = 'plotgen'
-__version__ = '0.5.12'
+__version__ = '0.5.13'
 __url__ = 'https://github.com/bgottschall/plotgen'
 
 
@@ -689,13 +689,17 @@ class DataframeActions:
         print(pSep)
 
     def framesToCSV(dataframes, filenames=['stdout'], separator=None, quiet=False, precision=None):
+        created = []
+        if len(filenames) < len(dataframes):
+            filenames = filenames + ([filenames[-1]] * (len(dataframes) - len(filenames)))
         for _index, (frame, filename) in enumerate(zip(dataframes, filenames)):
             sep = ';' if separator is None else separator
             if filename.endswith('.tsv'):
                 sep = '\t'
             elif filename.endswith('.csv'):
                 sep = ';'
-            fFile = sys.stdout if filename == 'stdout' else sys.stderr if filename == 'stderr' else xopen.xopen(filename, 'w')
+            fFile = sys.stdout if filename == 'stdout' else sys.stderr if filename == 'stderr' else xopen.xopen(filename, 'w' if filename not in created else 'a')
+            created.append(filename)
             frame.to_csv(fFile, sep=sep, na_rep='NaN', float_format=None if precision is None else f'%.{precision}f')
             if (fFile != sys.stdout and fFile != sys.stdout):
                 fFile.close()
@@ -2044,8 +2048,8 @@ fig.add_trace(go.Scatter(
     name='mean_{traceName}',
     legendgroup='{traceName}',
     showlegend=False,
-    x={xdata if options.vertical else [numpy.mean([float(x) for x in xdata if isFloat(x)])]},
-    y={ydata if not options.vertical else [numpy.mean([float(y) for y in ydata if isFloat(y)])]},
+    y={[traceName] if not options.vertical else [numpy.mean([float(y) for y in ydata if isFloat(y)])]},
+    x={[traceName] if options.vertical else [numpy.mean([float(x) for x in xdata if isFloat(x)])]},
 {commentColour}    fillcolor='{fillcolour}',
 {commentColour}    line_color='{markercolour}',
     line_width={options.line_width},
