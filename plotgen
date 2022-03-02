@@ -40,7 +40,7 @@ import xopen
 import seaborn
 
 __prog__ = 'plotgen'
-__version__ = '0.5.13'
+__version__ = '0.5.14'
 __url__ = 'https://github.com/bgottschall/plotgen'
 
 
@@ -250,6 +250,12 @@ def updateRange(_range, dataList):
 
 
 class DataframeActions:
+    applyFunctions = {
+        'pandasSelfFunctions': ['abs', 'cumsum', 'cummax', 'cummin', 'cumprod', 'rank', 'diff', 'round', 'floor', 'ceil'],
+        'specialSelfFunctions': ['set', 'cset', 'polyfit'],
+        'generalComputeFunctions': ['add', 'sub', 'mul', 'div', 'truediv', 'floordiv', 'mod', 'pow', 'radd', 'rsub', 'rmul', 'rdiv', 'rtruediv', 'rfloordiv', 'rmod', 'rpow', 'lt', 'gt', 'le', 'ge', 'ne', 'eq'],
+    }
+
     def filterFunction(frame, data, mode, quiet=False):
         filterMap = {
             '=': lambda x: any(((pandas.isna(x) and pandas.isna(y)) or (float(x) == float(y) if isFloat([x, y]) else x == y) for y in data)),
@@ -459,20 +465,27 @@ class DataframeActions:
 
         functionName = function[0]
         functionParams = [numpy.nan if x in considerAsNaN else int(x) if str(x).isdigit() else float(x) if isFloat(x) else x for x in function[1:]]
-
         colWarning = False
 
-        # These functions are applied on each row individually, targetRowIds will be considered as applyRowIds as well
-        pandasSelfFunctions = ['abs', 'cumsum', 'cummax', 'cummin', 'cumprod', 'rank']
-        specialSelfFunctions = ['set', 'cset', 'polyfit']
+        if functionName not in [x for y in DataframeActions.applyFunctions.values() for x in y]:
+            raise Exception(f'apply function with name \'{functionName}\' unknown!')
 
         with pandas.option_context('mode.chained_assignment', None):
-            if functionName in (pandasSelfFunctions + specialSelfFunctions):
+            if functionName in DataframeActions.applyFunctions['pandasSelfFunctions'] + DataframeActions.applyFunctions['specialSelfFunctions'] + (DataframeActions.applyFunctions['generalComputeFunctions'] if len(functionParams) > 0 else []):
                 applyRowIds += targetRowIds
 
-                if functionName in pandasSelfFunctions:
+                if functionName in DataframeActions.applyFunctions['pandasSelfFunctions']:
                     if functionName == 'abs':
                         dataframe.iloc[applyRowIds, :] = dataframe.iloc[applyRowIds, :].abs().values
+                    elif functionName == 'ceil':
+                        dataframe.iloc[applyRowIds, :] = dataframe.iloc[applyRowIds, :].apply(numpy.ceil)
+                    elif functionName == 'floor':
+                        dataframe.iloc[applyRowIds, :] = dataframe.iloc[applyRowIds, :].apply(numpy.floor)
+                    elif functionName == 'round':
+                        decimals = 0 if len(functionParams) == 0 or not str(functionParams[0]).isdigit() else int(functionParams[0])
+                        if len(functionParams) > 0 and not str(functionParams[0]).isdigit() and not quiet:
+                            print('WARNING: round function parameter needs to be an integer', file=sys.stderr)
+                        dataframe.iloc[applyRowIds, :] = dataframe.iloc[applyRowIds, :].round(decimals).values
                     else:
                         dataframe.iloc[applyRowIds, :] = getattr(dataframe.iloc[applyRowIds, :], functionName)(axis=1).values
                 elif functionName == 'set':
@@ -502,7 +515,11 @@ class DataframeActions:
                                 print('WARNING: columns are not numeric, will fit along a static number series!', file=sys.stderr)
                             fitAlong = list(range(len(fitTarget)))
                         dataframe.iloc[rowIdx, :] = numpy.polyval(numpy.polyfit(fitAlong, fitTarget, fitDim), fitAlong)
-
+                else:
+                    if any(not isFloat(x) for x in functionParams) and not quiet:
+                        print(f'WARNING: apply function {functionName} not compatible with non-float arguments!', file=sys.stderr)
+                    for param in [x for x in functionParams if isFloat(x)]:
+                        dataframe.iloc[applyRowIds, :] = getattr(dataframe.iloc[applyRowIds, :].apply(pandas.to_numeric, errors='coerce'), functionName)(param)
             else:
                 # All other functions are computations between applyRowIds and targetRowIds
                 if len(targetRowIds) == 0:
@@ -534,19 +551,27 @@ class DataframeActions:
 
         functionName = function[0]
         functionParams = [numpy.nan if x in considerAsNaN else int(x) if str(x).isdigit() else float(x) if isFloat(x) else x for x in function[1:]]
-
         indexWarning = False
-        # These functions are applied on each row individually, targetRowIds will be considered as applyRowIds as well
-        pandasSelfFunctions = ['abs', 'cumsum', 'cummax', 'cummin', 'cumprod', 'rank', 'nan']
-        specialSelfFunctions = ['set', 'cset', 'polyfit']
+
+        if functionName not in [x for y in DataframeActions.applyFunctions.values() for x in y]:
+            raise Exception(f'apply function with name ''{functionName}'' unknown!')
 
         with pandas.option_context('mode.chained_assignment', None):
-            if functionName in (pandasSelfFunctions + specialSelfFunctions):
+            if functionName in DataframeActions.applyFunctions['pandasSelfFunctions'] + DataframeActions.applyFunctions['specialSelfFunctions'] + (DataframeActions.applyFunctions['generalComputeFunctions'] if len(functionParams) > 0 else []):
                 applyColumnIds += targetColumnIds
 
-                if functionName in pandasSelfFunctions:
+                if functionName in DataframeActions.applyFunctions['pandasSelfFunctions']:
                     if functionName == 'abs':
                         dataframe.iloc[:, applyColumnIds] = dataframe.iloc[:, applyColumnIds].abs().values
+                    elif functionName == 'ceil':
+                        dataframe.iloc[:, applyColumnIds] = dataframe.iloc[:, applyColumnIds].apply(numpy.ceil)
+                    elif functionName == 'floor':
+                        dataframe.iloc[:, applyColumnIds] = dataframe.iloc[:, applyColumnIds].apply(numpy.floor)
+                    elif functionName == 'round':
+                        decimals = 0 if len(functionParams) == 0 or not str(functionParams[0]).isdigit() else int(functionParams[0])
+                        if len(functionParams) > 0 and not str(functionParams[0]).isdigit() and not quiet:
+                            print('WARNING: round function parameter needs to be an integer', file=sys.stderr)
+                        dataframe.iloc[:, applyColumnIds] = dataframe.iloc[:, applyColumnIds].round(decimals).values
                     else:
                         dataframe.iloc[:, applyColumnIds] = getattr(dataframe.iloc[:, applyColumnIds], functionName)(axis=0).values
                 elif functionName == 'set':
@@ -575,7 +600,11 @@ class DataframeActions:
                                 print('WARNING: index is not numeric, will fit along a static number series!', file=sys.stderr)
                             fitAlong = list(range(len(fitTarget)))
                         dataframe.iloc[:, columnIdx] = numpy.polyval(numpy.polyfit(fitAlong, fitTarget, fitDim), fitAlong)
-
+                else:
+                    if any(not isFloat(x) for x in functionParams) and not quiet:
+                        print(f'WARNING: applying function {functionName} not compatible with non-float arguments!', file=sys.stderr)
+                    for param in [x for x in functionParams if isFloat(x)]:
+                        dataframe.iloc[:, applyColumnIds] = getattr(dataframe.iloc[:, applyColumnIds].apply(pandas.to_numeric, errors='coerce'), functionName)(param)
             else:
                 # All other functions are computations between applyColumnIds and targetColumnIds
                 if len(targetColumnIds) == 0:
@@ -764,7 +793,7 @@ parserFileOptions.add_argument("--filter-icolumns", help="filter data from colum
 parserFileOptions.add_argument("--filter-column", help="filter data from columns", type=str, default=[], sticky_default=True, nargs='+', action=ChildAction, parent=inputFileArgument)
 
 parserFileOptions.add_argument("--sort-order", help="sort rows after or column in this order (default %(default)s)", default='desc', choices=['asc', 'desc'], action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--sort-function", help="sort rows after function or column (default %(default)s)", default='none', choices=['none', 'mean', 'median', 'std', 'min', 'max'], action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--sort-function", help="sort rows after function or column (default %(default)s)", default='mean', choices=['sum', 'mean', 'median', 'std', 'var', 'min', 'max', 'cummax' 'cummin', 'cumprod', 'cumsum' ], action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--sort-columns", help="sort columns", default=False, sub_action="store_true", nargs=0, sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--sort-by-irows", help="sort column after this row index", type=SliceType({'columns': 'columns', **defaultSliceTypeTranslator}), default=[], nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--sort-by-rows", help="sort column after this row", type=str, default=[], nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
@@ -943,7 +972,7 @@ parserColourOptions.add_argument("--palette-cmap", help="how to generate contino
 parserColourOptions.add_argument("--subplot-colours", help="specify explicit subplot colours (sets default colour cycle to subplot)", type=escapedStr, default=[], nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserColourOptions.add_argument("--subplot-palette", help="valid seaborn colour palette used for this subplot (sets default colour cycle to subplot)", type=str, default=None, sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserColourOptions.add_argument("--subplot-palette-opacity", help="subplot palette opacity", type=float, choices=Range(0, 1.0), default=None, sticky_default=True, action=ChildAction, parent=inputFileArgument)
-parserColourOptions.add_argument("--subplot-palette-reverse", help="reverse subplot colour palette", sub_action="store_true", default=False, nargs=0, sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserColourOptions.add_argument("--subplot-palette-reverse", help="reverse subplot colour palette", sub_action="store_true", default=None, nargs=0, sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserColourOptions.add_argument("--subplot-palette-count", help="manually set the number of colours to generate from the subplot palette (set default colour cycle to subplot)", type=int, choices=Range(1, None), default=None, sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserColourOptions.add_argument("--subplot-palette-start", help="set the subplot palette start index (default 0)", type=int, default=None, choices=Range(0, None), sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserColourOptions.add_argument("--subplot-palette-cmap", help="how to generate continous colour maps (default linear)", type=str, default=None, choices=['linear', 'log', 'rlog'], sticky_default=True, action=ChildAction, parent=inputFileArgument)
@@ -1254,7 +1283,7 @@ for input in args.input:
             print("DEBUG: done reading file", file=sys.stderr)
 
     selectMode = 'all'
-    sortFunction = 'none'
+    sortFunction = 'mean'
     addAt = 'back'
     addFunction = 'mean'
     applyMode = 'normal'
@@ -2101,45 +2130,45 @@ fig.add_trace(go.Violin(
                 subplot['palette_index'] += 1 if args.per_frame_colours else 0
             else:
                 globalPaletteIndex += 1 if args.per_frame_colours else 0
+
+        else:
+            # Generate continuous colour scale as we will need it here
+            if subplot['cmap'] is None:
+                try:
+                    seaborn_cmap = seaborn.color_palette(subplot['palette'], as_cmap=True)
+                    if subplot['palette_cmap'] in ['log', 'rlog']:
+                        cmap_range = numpy.logspace(numpy.log10(0.1), numpy.log10(1.1), 255) - 0.1
+                        if subplot['palette_cmap'] == 'rlog':
+                            cmap_range = numpy.flip(1 - cmap_range)
+                    else:
+                        cmap_range = numpy.arange(0.0, 1.0 + (1.0 / 255), 1.0 / 255)
+                    if subplot['palette_reverse']:
+                        cmap_range = numpy.flip(cmap_range)
+                    subplot['cmap'] = [f'rgb({r}, {g}, {b})' for (r, g, b) in [map(numpy.uint8, 255 * numpy.array(seaborn_cmap(i)[:3])) for i in cmap_range]]
+                except Exception:
+                    raise 'ERROR: could not generated continuous colour scale, is the chosen seaborn palette compatible?'
+
+            data = frame.values.T.tolist() if options.vertical else frame.values.tolist()
+            yaxis = list(frame.columns) if options.vertical else list(frame.index)
+            xaxis = list(frame.columns) if not options.vertical else list(frame.index)
+            updateRange(plotRange, [xaxis, yaxis])
+            if options.plot == 'heatmap':
+                plotScript.write(f"""
+    fig.add_trace(go.Heatmap(
+        y={yaxis},
+        x={xaxis},
+        z={data},
+    {commentColour}    colorscale={subplot['cmap']},
+        showscale={options.colour_scale == 'show'},
+    ), col={options.col}, row={options.row}, secondary_y={options.y_secondary})
+                """)
+
         inputIndex += 1
         if subplot['palette_local']:
             subplot['palette_index'] += 1 if args.per_input_colours else 0
         else:
             globalPaletteIndex += 1 if args.per_input_colours else 0
-    else:
-        # Generate continuous colour scale as we will need it here
-        if subplot['cmap'] is None:
-            try:
-                seaborn_cmap = seaborn.color_palette(subplot['palette'], as_cmap=True)
-                if subplot['palette_cmap'] in ['log', 'rlog']:
-                    cmap_range = numpy.logspace(numpy.log10(0.1), numpy.log10(1.1), 255) - 0.1
-                    if subplot['palette_cmap'] == 'rlog':
-                        cmap_range = numpy.flip(1 - cmap_range)
-                else:
-                    cmap_range = numpy.arange(0.0, 1.0 + (1.0 / 255), 1.0 / 255)
-                if subplot['palette_reverse']:
-                    cmap_range = numpy.flip(cmap_range)
-
-                subplot['cmap'] = [f'rgb({r}, {g}, {b})' for (r, g, b) in [map(numpy.uint8, 255 * numpy.array(seaborn_cmap(i)[:3])) for i in cmap_range]]
-            except Exception:
-                raise 'ERROR: could not generated continuous colour scale, is the chosen seaborn palette compatible?'
-
-        data = frame.values.T.tolist() if options.vertical else frame.values.tolist()
-        yaxis = list(frame.columns) if options.vertical else list(frame.index)
-        xaxis = list(frame.columns) if not options.vertical else list(frame.index)
-        updateRange(plotRange, [xaxis, yaxis])
-        if options.plot == 'heatmap':
-            plotScript.write(f"""
-fig.add_trace(go.Heatmap(
-    y={yaxis},
-    x={xaxis},
-    z={data},
-{commentColour}    colorscale={subplot['cmap']},
-    showscale={options.colour_scale == 'show'},
-), col={options.col}, row={options.row}, secondary_y={options.y_secondary})
-            """)
-            pass
-
+    
     # Find out if we need left, right and bottom margin:
     if defaultLeftMargin is None and options.col == 1 and options.y_title and not options.y_secondary:
         defaultLeftMargin = True
