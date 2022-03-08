@@ -40,7 +40,7 @@ import xopen
 import seaborn
 
 __prog__ = 'plotgen'
-__version__ = '0.5.14'
+__version__ = '0.5.15'
 __url__ = 'https://github.com/bgottschall/plotgen'
 
 
@@ -497,7 +497,9 @@ class DataframeActions:
                     if len(functionParams) < 3:
                         raise Exception('ERROR: function conditional set requires minimum 3 parameters')
                     for rowId in applyRowIds:
-                        dataframe.iloc[rowId, DataframeActions.filterFunction(dataframe.iloc[rowId, :], functionParams[1:-1], functionParams[0])] = functionParams[-1]
+                        mask = [i for (i, x) in enumerate(DataframeActions.filterFunction(dataframe.iloc[rowId, :], functionParams[1:-1], functionParams[0])) if x]
+                        if len(mask) > 0:
+                            dataframe.iloc[rowId, mask] = functionParams[-1]
                 elif functionName == 'polyfit':
                     try:
                         fitDim = 1 if len(functionParams) == 0 else int(functionParams[0])
@@ -582,7 +584,9 @@ class DataframeActions:
                     if len(functionParams) < 3:
                         raise Exception('ERROR: function conditional set requires 3 parameters')
                     for columnId in applyColumnIds:
-                        dataframe.iloc[DataframeActions.filterFunction(dataframe.iloc[:, columnId], functionParams[1:-1], functionParams[0]), columnId] = functionParams[-1]
+                        mask = [i for (i, x) in enumerate(DataframeActions.filterFunction(dataframe.iloc[:, columnId], functionParams[1:-1], functionParams[0])) if x]
+                        if len(mask) > 0:
+                            dataframe.iloc[mask, columnId] = functionParams[-1]
                 elif functionName == 'polyfit':
                     try:
                         fitDim = 1 if len(functionParams) == 0 else int(functionParams[0])
@@ -2006,6 +2010,7 @@ fig.add_trace(go.Scatter(
     ),""")
                     plotScript.write(f"""
     opacity={options.opacity},
+    cliponaxis={False if 'markers' in options.line_mode else True},
 ), col={options.col}, row={options.row}, secondary_y={options.y_secondary})
 """)
                 elif options.plot == 'bar':
