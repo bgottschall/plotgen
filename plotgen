@@ -250,10 +250,11 @@ def updateRange(_range, dataList):
 
 
 class DataframeActions:
-    applyFunctions = {
+    functions = {
         'pandasSelfFunctions': ['abs', 'cumsum', 'cummax', 'cummin', 'cumprod', 'rank', 'diff', 'round', 'floor', 'ceil'],
         'specialSelfFunctions': ['set', 'cset', 'polyfit'],
-        'generalComputeFunctions': ['add', 'sub', 'mul', 'div', 'truediv', 'floordiv', 'mod', 'pow', 'radd', 'rsub', 'rmul', 'rdiv', 'rtruediv', 'rfloordiv', 'rmod', 'rpow', 'lt', 'gt', 'le', 'ge', 'ne', 'eq'],
+        'amidComputeFunctions': ['add', 'sub', 'mul', 'div', 'truediv', 'floordiv', 'mod', 'pow', 'radd', 'rsub', 'rmul', 'rdiv', 'rtruediv', 'rfloordiv', 'rmod', 'rpow', 'lt', 'gt', 'le', 'ge', 'ne', 'eq'],
+        'soloComputeFunctions': ['sum', 'mean', 'median', 'std', 'var', 'count', 'skew', 'mad', 'min', 'max']
     }
 
     def filterFunction(frame, data, mode, quiet=False):
@@ -312,14 +313,16 @@ class DataframeActions:
         mode = data[0]
         data = [float(x) if isFloat(x) else x for x in data[1:]]
         for columnId in columnIds:
-            dataframe = dataframe.loc[DataframeActions.filterFunction(dataframe.iloc[:, columnId], data, mode)]
+            mask = [i for (i, x) in enumerate(DataframeActions.filterFunction(dataframe.iloc[:, columnId], data, mode)) if x]
+            dataframe = dataframe.iloc[mask]
         return dataframe
 
     def filterColumnsByRowData(dataframe, rowIds, data):
         mode = data[0]
         data = [float(x) if isFloat(x) else x for x in data[1:]]
         for rowId in rowIds:
-            dataframe = dataframe.loc[:, DataframeActions.filterFunction(dataframe.iloc[rowId, :], data, mode)]
+            mask = [i for (i, x) in enumerate(DataframeActions.filterFunction(dataframe.iloc[rowId, :], data, mode)) if x]
+            dataframe = dataframe.iloc[:, mask]
         return dataframe
 
     def getColumnIds(dataframe, columns, mode='all', ignore_errors=False):
@@ -388,15 +391,23 @@ class DataframeActions:
         dataframe.index = (names + dataframe.index.to_list()[len(names):])[:len(dataframe.index)]
         return dataframe
 
-    def sortColumns(dataframe, function='mean', order='asc'):
-        sortKey = getattr(dataframe, function)(axis=0)
-        sortKey.reset_index(drop=True, inplace=True)
-        return dataframe.iloc[:, sortKey.sort_values(ascending=(order == 'asc')).index]
+    def sortColumns(dataframe, function=['none'], order='asc'):
+        functionName = function[0]
+        if functionName == 'none':
+            sortKey = dataframe.reset_index(drop=True).T.reset_index(drop=True).T
+            sortKey = sortKey.sort_values(by=sortKey.index.tolist(), axis=1, ascending = (order == 'asc')).T
+        else:
+            sortKey = getattr(dataframe, functionName)(axis=0).reset_index(drop=True).sort_values(ascending=(order == 'asc'))
+        return dataframe.iloc[:, sortKey.index]
 
-    def sortRows(dataframe, function='mean', order='asc'):
-        sortKey = getattr(dataframe, function)(axis=1)
-        sortKey.reset_index(drop=True, inplace=True)
-        return dataframe.iloc[sortKey.sort_values(ascending=(order == 'asc')).index, :]
+    def sortRows(dataframe, function=['none'], order='asc'):
+        functionName = function[0]
+        if functionName == 'none':
+            sortKey = dataframe.T.reset_index(drop=True).T
+            sortKey = sortKey.sort_values(by=sortKey.columns.tolist(), axis=0, ascending = (order == 'asc'))
+        else:
+            sortKey = getattr(dataframe, functionName)(axis=1).reset_index(drop=True).sort_values(ascending=(order == 'asc'))
+        return dataframe.iloc[sortKey.index, :]
 
     def reverseColumns(dataframe):
         return dataframe.iloc[::, ::-1]
@@ -404,16 +415,17 @@ class DataframeActions:
     def reverseRows(dataframe):
         return dataframe.iloc[::-1]
 
-    def sortColumnsByRowIds(dataframe, rowIds, function='none', order='asc', quiet=False):
+    def sortColumnsByRowIds(dataframe, rowIds, function=['none'], order='asc', quiet=False):
+        functionName = function[0]
         if not isinstance(rowIds, list):
             rowIds = [rowIds]
-        sortSeries = 'columns' in rowIds or function != 'none'
+        sortSeries = 'columns' in rowIds or functionName != 'none'
         if 'columns' in rowIds:
             sortKey = dataframe.columns.to_series()
         else:
             sortKey = dataframe.iloc[rowIds].apply(pandas.to_numeric, errors="ignore")
-            if function != 'none':
-                sortKey = getattr(sortKey, function)(axis=0, numeric_only=True)
+            if functionName != 'none':
+                sortKey = getattr(sortKey, functionName)(axis=0, numeric_only=True)
 
         sortKey.reset_index(drop=True, inplace=True)
         if sortSeries:
@@ -423,16 +435,17 @@ class DataframeActions:
             sortKey = sortKey.sort_values(by=sortKey.index.to_list(), axis=1, ascending=(order == 'asc')).T
         return dataframe.iloc[:, sortKey.index]
 
-    def sortRowsByColumnIds(dataframe, colIds, function='none', order='asc', quiet=False):
+    def sortRowsByColumnIds(dataframe, colIds, function=['none'], order='asc', quiet=False):
+        functionName = function[0]
         if not isinstance(colIds, list):
             colIds = [colIds]
-        sortSeries = 'index' in colIds or function != 'none'
+        sortSeries = 'index' in colIds or functionName != 'none'
         if 'index' in colIds:
             sortKey = pandas.to_numeric(dataframe.index, errors="ignore").to_series()
         else:
             sortKey = dataframe.iloc[:, colIds].apply(pandas.to_numeric, errors="ignore")
-            if function != 'none':
-                sortKey = getattr(sortKey, function)(axis=1, numeric_only=True)
+            if functionName != 'none':
+                sortKey = getattr(sortKey, functionName)(axis=1, numeric_only=True)
 
         sortKey.reset_index(drop=True, inplace=True)
         if sortSeries:
@@ -452,6 +465,25 @@ class DataframeActions:
     def normaliseToConstant(dataframe, constant):
         return dataframe / constant
 
+    def normaliseRows(dataframe, function=['sum']):
+        functionName = function[0]
+
+        if functionName not in DataframeActions.functions['soloComputeFunctions']:
+            raise Exception(f'Normalise function \'{functionName}\' not found!')
+
+        normSeries = getattr(dataframe.apply(pandas.to_numeric, errors='coerce'), functionName)(axis=0)
+        return dataframe.div(normSeries, axis=1)
+
+    def normaliseColumns(dataframe, function=['sum']):
+        functionName = function[0]
+
+        if functionName not in DataframeActions.functions['soloComputeFunctions']:
+            raise Exception(f'Normalise function \'{functionName}\' not found!')
+
+        normSeries = getattr(dataframe.apply(pandas.to_numeric, errors='coerce'), functionName)(axis=1)
+        return dataframe.div(normSeries, axis=0)
+
+
     def abs(dataframe):
         return dataframe.abs()
 
@@ -467,14 +499,14 @@ class DataframeActions:
         functionParams = [numpy.nan if x in considerAsNaN else int(x) if str(x).isdigit() else float(x) if isFloat(x) else x for x in function[1:]]
         colWarning = False
 
-        if functionName not in [x for y in DataframeActions.applyFunctions.values() for x in y]:
+        if functionName not in [x for y in [DataframeActions.functions[x] for x in DataframeActions.functions if x != 'soloComputeFunctions'] for x in y]:
             raise Exception(f'apply function with name \'{functionName}\' unknown!')
 
         with pandas.option_context('mode.chained_assignment', None):
-            if functionName in DataframeActions.applyFunctions['pandasSelfFunctions'] + DataframeActions.applyFunctions['specialSelfFunctions'] + (DataframeActions.applyFunctions['generalComputeFunctions'] if len(functionParams) > 0 else []):
+            if functionName in DataframeActions.functions['pandasSelfFunctions'] + DataframeActions.functions['specialSelfFunctions'] + (DataframeActions.functions['amidComputeFunctions'] if len(functionParams) > 0 else []):
                 applyRowIds += targetRowIds
 
-                if functionName in DataframeActions.applyFunctions['pandasSelfFunctions']:
+                if functionName in DataframeActions.functions['pandasSelfFunctions']:
                     if functionName == 'abs':
                         dataframe.iloc[applyRowIds, :] = dataframe.iloc[applyRowIds, :].abs().values
                     elif functionName == 'ceil':
@@ -555,14 +587,14 @@ class DataframeActions:
         functionParams = [numpy.nan if x in considerAsNaN else int(x) if str(x).isdigit() else float(x) if isFloat(x) else x for x in function[1:]]
         indexWarning = False
 
-        if functionName not in [x for y in DataframeActions.applyFunctions.values() for x in y]:
-            raise Exception(f'apply function with name ''{functionName}'' unknown!')
+        if functionName not in [x for y in [DataframeActions.functions[x] for x in DataframeActions.functions if x != 'soloComputeFunctions'] for x in y]:
+            raise Exception(f'apply function with name \'{functionName}\' unknown!')
 
         with pandas.option_context('mode.chained_assignment', None):
-            if functionName in DataframeActions.applyFunctions['pandasSelfFunctions'] + DataframeActions.applyFunctions['specialSelfFunctions'] + (DataframeActions.applyFunctions['generalComputeFunctions'] if len(functionParams) > 0 else []):
+            if functionName in DataframeActions.functions['pandasSelfFunctions'] + DataframeActions.functions['specialSelfFunctions'] + (DataframeActions.functions['amidComputeFunctions'] if len(functionParams) > 0 else []):
                 applyColumnIds += targetColumnIds
 
-                if functionName in DataframeActions.applyFunctions['pandasSelfFunctions']:
+                if functionName in DataframeActions.functions['pandasSelfFunctions']:
                     if functionName == 'abs':
                         dataframe.iloc[:, applyColumnIds] = dataframe.iloc[:, applyColumnIds].abs().values
                     elif functionName == 'ceil':
@@ -630,42 +662,56 @@ class DataframeActions:
                             dataframe.iloc[:, targetColumnIds] = getattr(dataframe.iloc[:, targetColumnIds].apply(pandas.to_numeric, errors="coerce"), functionName)(applyColumn, axis=0).values
         return dataframe
 
-    def addRow(dataframe, name, function='mean', where='back'):
-        if function in ['nan', 'zero', 'one']:
-            element = numpy.nan if function == 'nan' else 0 if function == 'zero' else 1
-            newRow = pandas.DataFrame([[element] * dataframe.shape[1]], index=[name], columns=dataframe.columns)
+    def addRow(dataframe, name, function=['mean'], where='back'):
+        functionName = function[0]
+        functionParams = [numpy.nan if x in considerAsNaN else int(x) if str(x).isdigit() else float(x) if isFloat(x) else x for x in function[1:]]
+        if functionName == 'set':
+            if len(functionParams) == 0:
+                raise Exception('--add-function set requires one parameter as set constant')
+            newRow = pandas.DataFrame([[functionParams[0]] * dataframe.shape[1]], index=[name], columns=dataframe.columns)
         else:
-            newRow = getattr(dataframe.apply(pandas.to_numeric, errors='coerce'), function)(axis=0)
+            newRow = getattr(dataframe.apply(pandas.to_numeric, errors='coerce'), functionName)(axis=0)
             newRow = newRow.to_frame(name).transpose()
         return pandas.concat([dataframe, newRow], axis=0) if where == 'back' else pandas.concat([newRow, dataframe], axis=0)
 
     def addColumn(dataframe, name, function='mean', where='back'):
-        if function in ['nan', 'zero', 'one']:
-            element = numpy.nan if function == 'nan' else 0 if function == 'zero' else 1
-            newCol = pandas.Series(data=[element] * dataframe.shape[0], name=name, index=dataframe.index)
+        functionName = function[0]
+        functionParams = [numpy.nan if x in considerAsNaN else int(x) if str(x).isdigit() else float(x) if isFloat(x) else x for x in function[1:]]
+        if functionName == 'set':
+            if len(functionParams) == 0:
+                raise Exception('--add-function set requires one parameter as set constant')
+            newCol = pandas.Series(data=[functionParams[0]] * dataframe.shape[0], name=name, index=dataframe.index)
         else:
-            newCol = getattr(dataframe.apply(pandas.to_numeric, errors='coerce'), function)(axis=1)
+            newCol = getattr(dataframe.apply(pandas.to_numeric, errors='coerce'), functionName)(axis=1)
             newCol.name = name
         return pandas.concat([dataframe, newCol], axis=1) if where == 'back' else pandas.concat([newCol, dataframe], axis=1)
 
-    def groupByColumnIds(dataframe, columnIds, function='sum'):
+    def groupByColumnIds(dataframe, columnIds, function=['sum']):
+        functionName = function[0]
         if not isinstance(columnIds, list):
             columnIds = [columnIds]
         if 'index' in columnIds:
-            return getattr(dataframe.groupby(dataframe.index, axis=0), function)()
+            return getattr(dataframe.groupby(dataframe.index, axis=0), functionName)()
         else:
             grouper = [dataframe.columns[c] for c in columnIds]
-            return getattr(dataframe.groupby(grouper, as_index=True, axis=0), function)()
+            dataframe = getattr(dataframe.groupby(grouper, as_index=True, axis=0), functionName)()
+            # plotgen does not like multi level index, convert a possible multi level index back to flat
+            dataframe.reset_index(inplace=True)
+            return dataframe.set_index(dataframe.iloc[:, 0]).iloc[:, 1:]
 
-    def groupByRowIds(dataframe, rowIds, function='sum'):
+    def groupByRowIds(dataframe, rowIds, function=['sum']):
+        functionName = function[0]
         if not isinstance(rowIds, list):
             rowIds = [rowIds]
         if 'columns' in rowIds:
-            return getattr(dataframe.groupby(dataframe.columns, axis=1), function)()
+            return getattr(dataframe.groupby(dataframe.columns, axis=1), functionName)()
         else:
             grouper = [dataframe.index[r] for r in rowIds]
-            print(grouper)
-            return getattr(dataframe.groupby(grouper, axis=1), function)()
+            dataframe = getattr(dataframe.T.groupby(grouper, axis=0), functionName)()
+            # plotgen does not like multi level index, convert a possible multi level index back to flat
+            dataframe.reset_index(inplace=True)
+            return dataframe.set_index(dataframe.iloc[:, 0]).iloc[:, 1:].T
+
 
     def joinFrames(dataframes, function='index'):
         joinedFrame = None
@@ -796,32 +842,35 @@ parserFileOptions.add_argument("--filter-row", help="filter data from rows", typ
 parserFileOptions.add_argument("--filter-icolumns", help="filter data from columns after indexes", type=str, default=[], sticky_default=True, nargs='+', action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--filter-column", help="filter data from columns", type=str, default=[], sticky_default=True, nargs='+', action=ChildAction, parent=inputFileArgument)
 
-parserFileOptions.add_argument("--sort-order", help="sort rows after or column in this order (default %(default)s)", default='desc', choices=['asc', 'desc'], action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--sort-function", help="sort rows after function or column (default %(default)s)", default='mean', choices=['sum', 'mean', 'median', 'std', 'var', 'min', 'max', 'cummax' 'cummin', 'cumprod', 'cumsum' ], action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--sort-columns", help="sort columns", default=False, sub_action="store_true", nargs=0, sticky_default=True, action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--sort-by-irows", help="sort column after this row index", type=SliceType({'columns': 'columns', **defaultSliceTypeTranslator}), default=[], nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--sort-by-rows", help="sort column after this row", type=str, default=[], nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--sort-rows", help="sort rows", default=False, sub_action="store_true", nargs=0, sticky_default=True, action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--sort-by-icolumns", help="sort rows after this column index", type=SliceType({'index': 'index', **defaultSliceTypeTranslator}), default=[], nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--sort-by-columns", help="sort rows after this column", type=str, default=[], nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--sort-order", help="sort rows after or column in this order (default %(default)s)", default='asc', choices=['asc', 'desc'], action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--sort-function", help=f"sort function (default 'none')", default=['none'], nargs='+', choices=['none'] + DataframeActions.functions['soloComputeFunctions'], action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--sort-rows", help="sort rows with selected sort function", default=False, sub_action="store_true", nargs=0, sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--sort-columns", help="sort columns with selected sort function", default=False, sub_action="store_true", nargs=0, sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--sort-by-irows", help="sort column after these row indexes", type=SliceType({'columns': 'columns', **defaultSliceTypeTranslator}), default=[], nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--sort-by-rows", help="sort column after these row names", type=str, default=[], nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--sort-by-icolumns", help="sort rows after these column indexes", type=SliceType({'index': 'index', **defaultSliceTypeTranslator}), default=[], nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--sort-by-columns", help="sort rows after these column names", type=str, default=[], nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--reverse-columns", help="reverse columns order", default=False, sub_action="store_true", nargs=0, sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--reverse-rows", help="reverse row order", default=False, sub_action="store_true", nargs=0, sticky_default=True, action=ChildAction, parent=inputFileArgument)
 
 parserFileOptions.add_argument("--data-scale", help="scales data (default %(default)s)", type=float, default=1, choices=Range(None, None), sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--data-offset", help="offsets data (default %(default)s)", type=float, default=0, choices=Range(None, None), sticky_default=True, action=ChildAction, parent=inputFileArgument)
 
-parserFileOptions.add_argument("--normalise-to", help="normalise data to (default %(default)s)", type=float, default=0, choices=Range(None, None), sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--normalise-function", help=f"normalise function (default '{DataframeActions.functions['soloComputeFunctions'][0]}')", type=str, default=[DataframeActions.functions['soloComputeFunctions'][0]], nargs='+', choices=DataframeActions.functions['soloComputeFunctions'], sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--normalise-columns", help="normalise columns with selected normalise function", default=False, nargs=0, sub_action="store_true", sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--normalise-rows", help="normalise rows with selected normalise function", default=False, nargs=0, sub_action="store_true", sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--normalise-to", help="normalise data to constant", type=float, default=0, choices=Range(None, None), sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--normalise-to-icolumn", help="normalise to this column index", type=SliceType(), default=None, sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--normalise-to-column", help="normalise to this column", type=str, default=None, sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--normalise-to-irow", help="normalise to this row index", type=SliceType(), default=None, sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--normalise-to-row", help="normalise to this row", type=str, default=None, sticky_default=True, action=ChildAction, parent=inputFileArgument)
 
 parserFileOptions.add_argument("--add-at", help="add at the front or back of the dataframe", type=str, default='back', choices=['front', 'back'], action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--add-function", help="use this function to compute new row/column", type=str, default='mean', choices=['sum', 'mean', 'median', 'std', 'var', 'sum', 'count', 'skew', 'mad', 'min', 'max', 'nan', 'zero', 'one'], action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--add-function", help=f"use this function to compute new row/column (default '{DataframeActions.functions['soloComputeFunctions'][0]}')", type=str, default=[DataframeActions.functions['soloComputeFunctions'][0]], nargs='+', choices=Range(None, None, DataframeActions.functions['soloComputeFunctions'] + ['set']), action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--add-column", help="add a new column with name", type=str, default=None, sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--add-row", help="add a new row with name", type=str, default=None, sticky_default=True, action=ChildAction, parent=inputFileArgument)
 
-parserFileOptions.add_argument("--group-function", help="use this function to compute grouped dataframe", type=str, default='sum', choices=['sum', 'mean', 'median', 'std', 'var', 'sum', 'count', 'skew', 'mad', 'min', 'max'], action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--group-function", help=f"use this function to compute grouped dataframe (default '{DataframeActions.functions['soloComputeFunctions'][0]}')", type=str, default=[DataframeActions.functions['soloComputeFunctions'][0]], nargs='+', choices=DataframeActions.functions['soloComputeFunctions'], action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--group-by-icolumns", help="group by this column index", type=SliceType({'index': 'index', **defaultSliceTypeTranslator}), default=[], nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--group-by-columns", help="group by this column", type=str, default=[], nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--group-by-irows", help="group by this row index", type=SliceType({'columns': 'columns', **defaultSliceTypeTranslator}), default=[], nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
@@ -1287,19 +1336,20 @@ for input in args.input:
             print("DEBUG: done reading file", file=sys.stderr)
 
     selectMode = 'all'
-    sortFunction = 'mean'
+    normaliseFunction = [DataframeActions.functions['soloComputeFunctions'][0]]
+    sortFunction = ['none']
     addAt = 'back'
-    addFunction = 'mean'
+    addFunction = [DataframeActions.functions['soloComputeFunctions'][0]]
     applyMode = 'normal'
-    applyFunction = ['mean']
-    groupFunction = 'sum'
-    sortOrder = 'desc'
+    applyFunction = [DataframeActions.functions['soloComputeFunctions'][0]]
+    groupFunction = [DataframeActions.functions['soloComputeFunctions'][0]]
+    sortOrder = 'asc'
     outputPrecision = None
 
     focusedFrames = list(range(len(inputFrames)))
 
     for (optionName, optionValue) in input['args'].ordered_args:
-        multiFrameActions = ['print_precision', 'select_mode', 'sort_function', 'sort_order', 'add_at', 'add_function', 'apply_mode', 'apply_function', 'group_function', 'join', 'file', 'pickle', 'split_column', 'split_icolumn', 'split_row', 'split_irow', 'focus_iframes', 'defocus_iframes', 'focus_frames', 'defocus_frames', 'select_iframes', 'select_frames', 'ignore_iframes', 'ignore_frames', 'frame_names']
+        multiFrameActions = ['print_precision', 'select_mode', 'normalise_function', 'sort_function', 'sort_order', 'add_at', 'add_function', 'apply_mode', 'apply_function', 'group_function', 'join', 'file', 'pickle', 'split_column', 'split_icolumn', 'split_row', 'split_irow', 'focus_iframes', 'defocus_iframes', 'focus_frames', 'defocus_frames', 'select_iframes', 'select_frames', 'ignore_iframes', 'ignore_frames', 'frame_names']
         if optionName not in multiFrameActions:
             for _index, (frameOptions, frame) in enumerate(inputFrames):
                 if (_index) not in focusedFrames:
@@ -1430,34 +1480,38 @@ for input in args.input:
                     frame = DataframeActions.sortColumnsByRowIds(frame, rowIds, sortFunction, sortOrder)
                 elif optionName == 'normalise_to':
                     frame = DataframeActions.normaliseToConstant(frame, optionValue)
+                elif optionName == 'normalise_rows':
+                    frame = DataframeActions.normaliseRows(frame, normaliseFunction)
+                elif optionName == 'normalise_columns':
+                    frame = DataframeActions.normaliseColumns(frame, normaliseFunction)
                 elif optionName == 'normalise_to_column':
                     applyColumnIds = DataframeActions.getColumnIds(frame, optionValue, selectMode)
                     if len(applyColumnIds) > 1 and not args.quiet:
                         print('WARNING:', file=sys.stderr)
                     targetColumnIds = DataframeActions.sliceToColumnIds(frame, slice(None))
                     if len(applyColumnIds) > 0 and len(targetColumnIds) > 0:
-                        frame = DataframeActions.applyOnColumns(frame, applyColumnIds[0], targetColumnIds, 'div')
+                        frame = DataframeActions.applyOnColumns(frame, applyColumnIds[0], targetColumnIds, ['div'])
                 elif optionName == 'normalise_to_icolumn':
                     applyColumnIds = DataframeActions.sliceToColumnIds(frame, optionValue)
                     if (len(applyColumnIds) > 1 and not args.quiet):
                         print('WARNING: can only normalise to a single column', file=sys.stderr)
                     targetColumnIds = DataframeActions.sliceToColumnIds(frame, slice(None))
                     if len(applyColumnIds) > 0 and len(targetColumnIds) > 0:
-                        frame = DataframeActions.applyOnColumns(frame, applyColumnIds[0], targetColumnIds, 'div')
+                        frame = DataframeActions.applyOnColumns(frame, applyColumnIds[0], targetColumnIds, ['div'])
                 elif optionName == 'normalise_to_row':
                     applyRowIds = DataframeActions.getRowIds(frame, optionValue, selectMode)
                     if len(applyRowIds) > 1 and not args.quiet:
                         print('WARNING:', file=sys.stderr)
                     targetRowIds = DataframeActions.sliceToRowIds(frame, slice(None))
                     if len(applyRowIds) > 0 and len(targetRowIds) > 0:
-                        frame = DataframeActions.applyOnRows(frame, applyRowIds[0], targetRowIds, 'div')
+                        frame = DataframeActions.applyOnRows(frame, applyRowIds[0], targetRowIds, ['div'])
                 elif optionName == 'normalise_to_irow':
                     applyRowIds = DataframeActions.sliceToRowIds(frame, optionValue)
                     if (len(applyRowIds) > 1 and not args.quiet):
                         print('WARNING: can only normalise to a single row', file=sys.stderr)
                     targetRowIds = DataframeActions.sliceToRowIds(frame, slice(None))
                     if len(applyRowIds) > 0 and len(targetRowIds) > 0:
-                        frame = DataframeActions.applyOnRows(frame, applyRowIds[0], targetRowIds, 'div')
+                        frame = DataframeActions.applyOnRows(frame, applyRowIds[0], targetRowIds, ['div'])
                 elif optionName == 'abs':
                     frame = DataframeActions.abs(frame)
                 elif optionName == 'apply_irows':
@@ -1546,6 +1600,8 @@ for input in args.input:
                 outputPrecision = None if optionValue == 'default' else int(optionValue)
             elif optionName == 'select_mode':
                 selectMode = optionValue
+            elif optionName == 'normalise_function':
+                normaliseFunction = optionValue
             elif optionName == 'sort_function':
                 sortFunction = optionValue
             elif optionName == 'sort_order':
@@ -2173,7 +2229,7 @@ fig.add_trace(go.Violin(
             subplot['palette_index'] += 1 if args.per_input_colours else 0
         else:
             globalPaletteIndex += 1 if args.per_input_colours else 0
-    
+
     # Find out if we need left, right and bottom margin:
     if defaultLeftMargin is None and options.col == 1 and options.y_title and not options.y_secondary:
         defaultLeftMargin = True
