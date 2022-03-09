@@ -377,18 +377,22 @@ class DataframeActions:
     def setIndexColumnByIdx(dataframe, colIdx):
         return dataframe.set_index(dataframe.iloc[:, colIdx])
 
-    def renameColumns(dataframe, names):
-        if not isinstance(names, list):
-            names = [names]
-        names = [float(x) if isFloat(x) else x for x in names]
-        dataframe.columns = (names + dataframe.columns.to_list()[len(names):])[:len(dataframe.columns)]
+    def renameColumns(dataframe, columnIds, names):
+        lColumns = dataframe.columns.tolist()
+        for i, columnId in enumerate(columnIds):
+            if i >= len(names) or i >= len(lColumns):
+                break
+            lColumns[columnId] = float(names[i]) if isFloat(names[i]) else names[i]
+        dataframe.columns = lColumns
         return dataframe
 
-    def renameRows(dataframe, names):
-        if not isinstance(names, list):
-            names = [names]
-        names = [float(x) if isFloat(x) else x for x in names]
-        dataframe.index = (names + dataframe.index.to_list()[len(names):])[:len(dataframe.index)]
+    def renameRows(dataframe, rowIds, names):
+        lRows = dataframe.index.tolist()
+        for i, rowId in enumerate(rowIds):
+            if i >= len(names) or i >= len(lRows):
+                break
+            lRows[rowId] = float(names[i]) if isFloat(names[i]) else names[i]
+        dataframe.set_index(pandas.Series(lRows, name=dataframe.index.name), inplace=True)
         return dataframe
 
     def sortColumns(dataframe, function=['none'], order='asc'):
@@ -836,7 +840,6 @@ parserFileOptions.add_argument("--select-columns", help="select columns", type=s
 parserFileOptions.add_argument("--select-iframes", help="select frame indexes", type=SliceType(), default=[], sticky_default=True, nargs='+', action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--select-frames", help="select frames", type=str, default=[], sticky_default=True, nargs='+', action=ChildAction, parent=inputFileArgument)
 
-parserFileOptions.add_argument("--compare-mode", help="filter data mode (default %(default)s)", type=str, default="=", choices=['=', '!=', '<', '>', '<=', '>=', '!='], action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--filter-irows", help="filter data from rows after indexes", type=str, default=[], sticky_default=True, nargs='+', action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--filter-row", help="filter data from rows", type=str, default=[], sticky_default=True, nargs='+', action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--filter-icolumns", help="filter data from columns after indexes", type=str, default=[], sticky_default=True, nargs='+', action=ChildAction, parent=inputFileArgument)
@@ -866,7 +869,7 @@ parserFileOptions.add_argument("--normalise-to-irow", help="normalise to this ro
 parserFileOptions.add_argument("--normalise-to-row", help="normalise to this row", type=str, default=None, sticky_default=True, action=ChildAction, parent=inputFileArgument)
 
 parserFileOptions.add_argument("--add-at", help="add at the front or back of the dataframe", type=str, default='back', choices=['front', 'back'], action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--add-function", help=f"use this function to compute new row/column (default '{DataframeActions.functions['soloComputeFunctions'][0]}')", type=str, default=[DataframeActions.functions['soloComputeFunctions'][0]], nargs='+', choices=Range(None, None, DataframeActions.functions['soloComputeFunctions'] + ['set']), action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--add-function", help=f"use this function to compute new row/column (default '{DataframeActions.functions['soloComputeFunctions'][0]}')", type=str, default=[DataframeActions.functions['soloComputeFunctions'][0]], nargs='+', action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--add-column", help="add a new column with name", type=str, default=None, sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--add-row", help="add a new row with name", type=str, default=None, sticky_default=True, action=ChildAction, parent=inputFileArgument)
 
@@ -885,8 +888,11 @@ parserFileOptions.add_argument("--apply-columns", help="compute function on mult
 parserFileOptions.add_argument("--apply-rows", help="compute function on multiple rows", type=str, default=[], nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
 
 parserFileOptions.add_argument("--column-names", help="rename columns", type=str, sticky_default=True, default=[], nargs='+', action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--icolumn-names", help="rename columns", type=str, sticky_default=True, default=[], nargs='+', action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--row-names", help="rename rows", type=str, sticky_default=True, default=[], nargs='+', action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--irow-names", help="rename rows", type=str, sticky_default=True, default=[], nargs='+', action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--frame-names", help="rename frames", type=str, sticky_default=True, default=[], nargs='+', action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--iframe-names", help="rename frames", type=str, sticky_default=True, default=[], nargs='+', action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--drop-nan", help="dropping rows/columns that are completely empty", sticky_default=True, default=False, nargs=0, sub_action="store_true", action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--drop-any-nan", help="dropping rows/columns that contain empty values", sticky_default=True, default=False, nargs=0, sub_action="store_true", action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--transpose", help="transpose data", default=False, sticky_default=True, nargs=0, sub_action="store_true", action=ChildAction, parent=inputFileArgument)
@@ -1561,9 +1567,23 @@ for input in args.input:
                 elif optionName == 'data_scale':
                     frame = DataframeActions.scaleConstant(frame, optionValue)
                 elif optionName == 'column_names':
-                    frame = DataframeActions.renameColumns(frame, optionValue)
+                    frame = DataframeActions.renameColumns(frame, list(range(frame.shape[1])), optionValue)
+                elif optionName == 'icolumn_names':
+                    if not isSliceType(optionValue[0]):
+                        if not args.quiet:
+                            print('WARNING: invalid index or slice provided to --icolumn-names', file=sys.stderr)
+                    if len(optionValue) > 1:
+                        columnIds = DataframeActions.sliceToColumnIds(frame, SliceType()(optionValue[0]))
+                        frame = DataframeActions.renameColumns(frame, columnIds, optionValue[1:])
                 elif optionName == 'row_names':
-                    frame = DataframeActions.renameRows(frame, optionValue)
+                    frame = DataframeActions.renameRows(frame, list(range(frame.shape[0])), optionValue)
+                elif optionName == 'irow_names':
+                    if not isSliceType(optionValue[0]):
+                        if not args.quiet:
+                            print('WARNING: invalid index or slice provided to --irow-names', file=sys.stderr)
+                    if len(optionValue) > 1:
+                        rowIds = DataframeActions.sliceToRowIds(frame, SliceType()(optionValue[0]))
+                        frame = DataframeActions.renameRows(frame, rowIds, optionValue[1:])
                 elif optionName == 'drop_nan':
                     frame = DataframeActions.dropNaN(frame)
                 elif optionName == 'drop_any_nan':
