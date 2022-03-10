@@ -375,7 +375,7 @@ class DataframeActions:
         return dataframe.reset_index()
 
     def setIndexColumnByIdx(dataframe, colIdx):
-        return dataframe.set_index(dataframe.iloc[:, colIdx])
+        return dataframe.set_index(pandas.Index(dataframe.iloc[:, colIdx], name=dataframe.columns[colIdx]))
 
     def renameColumns(dataframe, columnIds, names):
         lColumns = dataframe.columns.tolist()
@@ -486,7 +486,6 @@ class DataframeActions:
 
         normSeries = getattr(dataframe.apply(pandas.to_numeric, errors='coerce'), functionName)(axis=1)
         return dataframe.div(normSeries, axis=0)
-
 
     def abs(dataframe):
         return dataframe.abs()
@@ -697,25 +696,16 @@ class DataframeActions:
         if 'index' in columnIds:
             return getattr(dataframe.groupby(dataframe.index, axis=0), functionName)()
         else:
-            grouper = [dataframe.columns[c] for c in columnIds]
-            dataframe = getattr(dataframe.groupby(grouper, as_index=True, axis=0), functionName)()
-            # plotgen does not like multi level index, convert a possible multi level index back to flat
-            dataframe.reset_index(inplace=True)
+            seen = set()
+            columnIds = [x for x in columnIds if x not in seen and not seen.add(x)]
+            newColumnLabels = [dataframe.columns[x] for x in columnIds] + [dataframe.columns[x] for x in range(dataframe.shape[1]) if x not in columnIds]
+            dataframe.columns = list(range(dataframe.shape[1]))
+            dataframe = getattr(dataframe.groupby(columnIds, as_index=False, axis=0), functionName)()
+            dataframe.columns = newColumnLabels
             return dataframe.set_index(dataframe.iloc[:, 0]).iloc[:, 1:]
 
     def groupByRowIds(dataframe, rowIds, function=['sum']):
-        functionName = function[0]
-        if not isinstance(rowIds, list):
-            rowIds = [rowIds]
-        if 'columns' in rowIds:
-            return getattr(dataframe.groupby(dataframe.columns, axis=1), functionName)()
-        else:
-            grouper = [dataframe.index[r] for r in rowIds]
-            dataframe = getattr(dataframe.T.groupby(grouper, axis=0), functionName)()
-            # plotgen does not like multi level index, convert a possible multi level index back to flat
-            dataframe.reset_index(inplace=True)
-            return dataframe.set_index(dataframe.iloc[:, 0]).iloc[:, 1:].T
-
+        return DataframeActions.groupByColumnIds(dataframe.T, rowIds, function).T
 
     def joinFrames(dataframes, function='index'):
         joinedFrame = None
