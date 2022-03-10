@@ -700,7 +700,9 @@ class DataframeActions:
             columnIds = [x for x in columnIds if x not in seen and not seen.add(x)]
             newColumnLabels = [dataframe.columns[x] for x in columnIds] + [dataframe.columns[x] for x in range(dataframe.shape[1]) if x not in columnIds]
             dataframe.columns = list(range(dataframe.shape[1]))
-            dataframe = getattr(dataframe.groupby(columnIds, as_index=False, axis=0), functionName)()
+            dataframe = getattr(dataframe.convert_dtypes().groupby(by=columnIds, as_index=False, sort=False), functionName)()
+            if len(dataframe.columns) != len(newColumnLabels):
+                raise Exception('Grouping dropped "nuisances" columns, and is considered not successful. This is probably due to incompatible data types in columns.')
             dataframe.columns = newColumnLabels
             return dataframe.set_index(dataframe.iloc[:, 0]).iloc[:, 1:]
 
