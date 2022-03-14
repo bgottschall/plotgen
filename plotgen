@@ -259,8 +259,8 @@ class DataframeActions:
 
     def filterFunction(frame, data, mode, quiet=False):
         filterMap = {
-            '=': lambda x: any(((pandas.isna(x) and pandas.isna(y)) or (float(x) == float(y) if isFloat([x, y]) else x == y) for y in data)),
-            '!=': lambda x: all(float(x) != float(y) if isFloat([x, y]) else x != y for y in data),
+            '=': lambda x: any((pandas.isna(x) and pandas.isna(y)) or (float(x) == float(y) if isFloat([x, y]) else x == y) for y in data),
+            '!=': lambda x: all(((pandas.isna(x) != pandas.isna(y)) if (pandas.isna(x) or pandas.isna(y)) else (float(x) != float(y) if isFloat([x, y]) else x != y)) for y in data),
             '<': lambda x: any(float(x) < float(y) if isFloat([x, y]) else x < y for y in data),
             '>': lambda x: any(float(x) > float(y) if isFloat([x, y]) else x > y for y in data),
             '<=': lambda x: any(((pandas.isna(x) and pandas.isna(y)) or float(x) <= float(y) if isFloat([x, y]) else x <= y) for y in data),
@@ -275,7 +275,6 @@ class DataframeActions:
         if mode not in filterMap:
             if not quiet:
                 raise Exception(f'ERROR: could not find condition {mode}')
-            return frame
         else:
             return frame.apply(filterMap[mode])
 
@@ -314,7 +313,7 @@ class DataframeActions:
         data = [float(x) if isFloat(x) else x for x in data[1:]]
         for columnId in columnIds:
             mask = [i for (i, x) in enumerate(DataframeActions.filterFunction(dataframe.iloc[:, columnId], data, mode)) if x]
-            dataframe = dataframe.iloc[mask]
+            dataframe = dataframe.iloc[mask, :]
         return dataframe
 
     def filterColumnsByRowData(dataframe, rowIds, data):
@@ -399,7 +398,7 @@ class DataframeActions:
         functionName = function[0]
         if functionName == 'none':
             sortKey = dataframe.reset_index(drop=True).T.reset_index(drop=True).T
-            sortKey = sortKey.sort_values(by=sortKey.index.tolist(), axis=1, ascending = (order == 'asc')).T
+            sortKey = sortKey.sort_values(by=sortKey.index.tolist(), axis=1, ascending=(order == 'asc')).T
         else:
             sortKey = getattr(dataframe, functionName)(axis=0).reset_index(drop=True).sort_values(ascending=(order == 'asc'))
         return dataframe.iloc[:, sortKey.index]
@@ -408,7 +407,7 @@ class DataframeActions:
         functionName = function[0]
         if functionName == 'none':
             sortKey = dataframe.T.reset_index(drop=True).T
-            sortKey = sortKey.sort_values(by=sortKey.columns.tolist(), axis=0, ascending = (order == 'asc'))
+            sortKey = sortKey.sort_values(by=sortKey.columns.tolist(), axis=0, ascending=(order == 'asc'))
         else:
             sortKey = getattr(dataframe, functionName)(axis=1).reset_index(drop=True).sort_values(ascending=(order == 'asc'))
         return dataframe.iloc[sortKey.index, :]
@@ -838,7 +837,7 @@ parserFileOptions.add_argument("--filter-icolumns", help="filter data from colum
 parserFileOptions.add_argument("--filter-column", help="filter data from columns", type=str, default=[], sticky_default=True, nargs='+', action=ChildAction, parent=inputFileArgument)
 
 parserFileOptions.add_argument("--sort-order", help="sort rows after or column in this order (default %(default)s)", default='asc', choices=['asc', 'desc'], action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--sort-function", help=f"sort function (default 'none')", default=['none'], nargs='+', choices=['none'] + DataframeActions.functions['soloComputeFunctions'], action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--sort-function", help="sort function (default 'none')", default=['none'], nargs='+', choices=['none'] + DataframeActions.functions['soloComputeFunctions'], action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--sort-rows", help="sort rows with selected sort function", default=False, sub_action="store_true", nargs=0, sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--sort-columns", help="sort columns with selected sort function", default=False, sub_action="store_true", nargs=0, sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--sort-by-irows", help="sort column after these row indexes", type=SliceType({'columns': 'columns', **defaultSliceTypeTranslator}), default=[], nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
