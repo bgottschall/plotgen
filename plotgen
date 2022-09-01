@@ -40,7 +40,7 @@ import xopen
 import seaborn
 
 __prog__ = 'plotgen'
-__version__ = '0.5.15'
+__version__ = '0.6.0'
 __url__ = 'https://github.com/bgottschall/plotgen'
 
 
@@ -1251,6 +1251,9 @@ defaultPadMargin = False
 
 doneSomething = False
 
+stdinBuf = None
+stdinReferenced = 0 if os.path.exists('stdin') else sum([1 if filename == 'stdin' else 0 for input in args.input for filename in input['value']])
+
 for input in args.input:
     inputOptions = input['args']
     inputFileNames = input['value']
@@ -1260,13 +1263,26 @@ for input in args.input:
     inputOptions.frameIndex = 0
     inputFrames = []
     for filename in inputFileNames:
-        if not os.path.exists(filename):
+        if filename == 'stdin' and os.path.exists(filename) and not args.quiet:
+            print("WARNING: reading in a file called 'stdin' instead of standard input")
+
+        if not os.path.exists(filename) and not filename == 'stdin':
             raise Exception(f'Could not find file {filename}!')
 
         if args.debug:
             print(f"DEBUG: reading in {filename}", file=sys.stderr)
 
-        buf = xopen.xopen(filename, mode='rb').read()
+        if filename == 'stdin' and not os.path.exists(filename):
+            if stdinBuf is None:
+                stdinBuf = sys.stdin.buffer.read()
+            buf = stdinBuf
+
+            stdinReferenced -= 1
+            if stdinReferenced <= 0:
+               del stdinBuf
+               stdinBuf = None
+        else:
+            buf = xopen.xopen(filename, mode='rb').read()
 
         try:
             frame = pickle.loads(buf)

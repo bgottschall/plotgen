@@ -1,14 +1,12 @@
-.PHONY: pip wheel pip_upload tests plots clean .check_version
+.PHONY: pip tests plots clean .check_version
 
-pip: clean .check_version 
-	$(MAKE) wheel
-	$(MAKE) pip_upload
-
-wheel: setup.py
-	python setup.py bdist_wheel
-
-pip_upload:
+pip: clean
+	$(MAKE) dist
 	twine upload dist/*
+
+dist: .check_version setup.py
+	python $(lastword $^) bdist_wheel
+
 
 tests plots:
 	$(MAKE) -C $@
