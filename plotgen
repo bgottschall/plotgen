@@ -40,7 +40,7 @@ import xopen
 import seaborn
 
 __prog__ = 'plotgen'
-__version__ = '0.6.0'
+__version__ = '0.6.1'
 __url__ = 'https://github.com/bgottschall/plotgen'
 
 
@@ -2017,11 +2017,17 @@ for input in data:
                             xdata = [_categories, xdata]
                 else:  # Box and Violin
                     rawData = frame.iloc[:, colIndex].values
+                    if all(x is None for x in rawData):
+                        if not args.quie:
+                            print(f"WARNING: no data or only NaN found at column {colIndex} of frame '{inputFrameIndex}'", file=sys.stderr)
+                        rawData[0] = 0
+
                     data = [x for x in rawData if x is not None]
                     if expandDistribution is not None:
+                        maxData = max(data)
                         localExpand = [x for (x, y) in zip(expandDistribution, rawData) if y is not None]
                         if options.distribution_scale > 0:
-                            data = [(options.distribution_scale / max(data)) * x for x in data]
+                            data = [(options.distribution_scale / maxData) * x for x in data]
                         # Expansion is using ceiling to avoid dropping of data points. Side effect is that it might lift the distribution a little bit up
                         data = list(numpy.repeat(localExpand, numpy.ceil(data).astype(numpy.int64)))
                     index = None

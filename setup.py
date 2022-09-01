@@ -4,9 +4,10 @@ import os
 setup(
    name='plotgen',
    scripts=['plotgen'],
-   version='0.6.0',
+   version='0.6.1',
    description=('A plotly plotting script generator and data parser'),
    long_description=open(os.path.join(os.path.dirname(__file__), 'README.md')).read(),
+   long_description_content_type='text/markdown',
    author='Björn Gottschall',
    author_email='info@bgottschall.de',
    url='https://github.com/bgottschall/plotgen',
