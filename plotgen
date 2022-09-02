@@ -40,7 +40,7 @@ import xopen
 import seaborn
 
 __prog__ = 'plotgen'
-__version__ = '0.6.1'
+__version__ = '0.6.2'
 __url__ = 'https://github.com/bgottschall/plotgen'
 
 
@@ -252,8 +252,9 @@ def updateRange(_range, dataList):
 class DataframeActions:
     functions = {
         'pandasSelfFunctions': ['abs', 'cumsum', 'cummax', 'cummin', 'cumprod', 'rank', 'diff', 'round', 'floor', 'ceil'],
-        'specialSelfFunctions': ['set', 'cset', 'polyfit'],
+        'specialSelfFunctions': ['set', 'cset', 'polyfit', 'append' , 'prepend'],
         'amidComputeFunctions': ['add', 'sub', 'mul', 'div', 'truediv', 'floordiv', 'mod', 'pow', 'radd', 'rsub', 'rmul', 'rdiv', 'rtruediv', 'rfloordiv', 'rmod', 'rpow', 'lt', 'gt', 'le', 'ge', 'ne', 'eq'],
+        'onlyAmidComputeFunctions' : ['concat'],
         'soloComputeFunctions': ['sum', 'mean', 'median', 'std', 'var', 'count', 'skew', 'mad', 'min', 'max']
     }
 
@@ -522,6 +523,16 @@ class DataframeActions:
                         dataframe.iloc[applyRowIds, :] = dataframe.iloc[applyRowIds, :].round(decimals).values
                     else:
                         dataframe.iloc[applyRowIds, :] = getattr(dataframe.iloc[applyRowIds, :], functionName)(axis=1).values
+                elif functionName == 'append':
+                    if len(functionParams) == 0:
+                        print('WARNING: no parameters given for function append, skipping', file=sys.stderr)
+                    else:
+                        dataframe.iloc[applyRowIds, :] = (dataframe.iloc[applyRowIds, :].astype(str) + ''.join([str(x) for x in functionParams])).apply(pandas.to_numeric, errors='ignore')
+                elif functionName == 'prepend':
+                    if len(functionParams) == 0:
+                        print('WARNING: no parameters given for function prepend, skipping', file=sys.stderr)
+                    else:
+                        dataframe.iloc[applyRowIds, :] = (''.join([str(x) for x in functionParams]) + dataframe.iloc[applyRowIds, :].astype(str)).apply(pandas.to_numeric, errors='ignore')
                 elif functionName == 'set':
                     if len(functionParams) == 0:
                         print('WARNING: no parameters given for function set, using NaN instead!', file=sys.stderr)
@@ -567,7 +578,11 @@ class DataframeActions:
                     if applyMode == 'reverse':
                         targetRowIds, applyRowIds = applyRowIds, targetRowIds
 
-                    if functionName == 'copy':
+                    if functionName == 'concat':
+                        for targetRowIdx in targetRowIds:
+                            for applyRowIdx in applyRowIds:
+                                dataframe.iloc[targetRowIdx, :] = dataframe.iloc[targetRowIdx, :].astype(str).str.cat(dataframe.iloc[applyRowIdx, :].astype(str), join='right', sep=str(functionParams[0]) if len(functionParams) > 0 else '').apply(pandas.to_numeric, errors='ignore')
+                    elif functionName == 'copy':
                         if len(applyRowIds) > 0 and not args.quiet:
                             print('WARNING: only the last row has an effect with apply function copy!', file=sys.stderr)
                         dataframe.iloc[targetRowIds, :] = dataframe.iloc[targetRowIds, :].apply(lambda _: dataframe.iloc[applyRowIds[-1], :], axis=1).values
@@ -610,6 +625,16 @@ class DataframeActions:
                         dataframe.iloc[:, applyColumnIds] = dataframe.iloc[:, applyColumnIds].round(decimals).values
                     else:
                         dataframe.iloc[:, applyColumnIds] = getattr(dataframe.iloc[:, applyColumnIds], functionName)(axis=0).values
+                elif functionName == 'append':
+                    if len(functionParams) == 0:
+                        print('WARNING: no parameters given for function append, skipping', file=sys.stderr)
+                    else:
+                        dataframe.iloc[:, applyColumnIds] = (dataframe.iloc[:, applyColumnIds].astype(str) + ''.join([str(x) for x in functionParams])).apply(pandas.to_numeric, errors='ignore')
+                elif functionName == 'prepend':
+                    if len(functionParams) == 0:
+                        print('WARNING: no parameters given for function prepend, skipping', file=sys.stderr)
+                    else:
+                        dataframe.iloc[:, applyColumnIds] = (''.join([str(x) for x in functionParams]) + dataframe.iloc[:, applyColumnIds].astype(str)).apply(pandas.to_numeric, errors='ignore')
                 elif functionName == 'set':
                     if len(functionParams) < 1:
                         raise Exception('ERROR: function set requires a parameters')
@@ -654,7 +679,11 @@ class DataframeActions:
                     if applyMode == 'reverse':
                         targetColumnIds, applyColumnIds = applyColumnIds, targetColumnIds
 
-                    if functionName == 'copy':
+                    if functionName == 'concat':
+                        for targetColumnIdx in targetColumnIds:
+                            for applyColumnIdx in applyColumnIds:
+                                dataframe.iloc[:, targetColumnIdx] = dataframe.iloc[:, targetColumnIdx].astype(str).str.cat(dataframe.iloc[:, applyColumnIdx].astype(str), join='right', sep=str(functionParams[0]) if len(functionParams) > 0 else '').apply(pandas.to_numeric, errors='ignore')
+                    elif functionName == 'copy':
                         if len(applyColumnIds) > 0 and not args.quiet:
                             print('WARNING: only the last column has an effect with apply function copy!', file=sys.stderr)
                         dataframe.iloc[:, targetColumnIds] = dataframe.iloc[:, targetColumnIds].apply(lambda _: dataframe.iloc[:, applyColumnIds[-1]], axis=0).values
@@ -972,6 +1001,8 @@ parserPlotAxisOptions.add_argument("--y-type", help="choose type for y-axis (def
 parserPlotAxisOptions.add_argument("--x-type", help="choose type for x-axis (default %(default)s)", choices=['-', 'linear', 'log', 'date', 'category'], default='-', action=ChildAction, parent=inputFileArgument)
 parserPlotAxisOptions.add_argument("--y-hide", help="hide y-axis", default=False, sticky_default=True, nargs=0, sub_action="store_true", action=ChildAction, parent=inputFileArgument)
 parserPlotAxisOptions.add_argument("--x-hide", help="hide x-axis", default=False, sticky_default=True, nargs=0, sub_action="store_true", action=ChildAction, parent=inputFileArgument)
+parserPlotAxisOptions.add_argument("--x-autorange", help="choose autorange mode for x-axis (default %(default)s)", choices=['on', 'off', 'reversed'], default='on', action=ChildAction, parent=inputFileArgument)
+parserPlotAxisOptions.add_argument("--y-autorange", help="choose autorange mode for y-axis (default %(default)s)", choices=['on', 'off', 'reversed'], default='on', action=ChildAction, parent=inputFileArgument)
 parserPlotAxisOptions.add_argument("--y-range-mode", help="choose range mode for x-axis (default %(default)s)", choices=['normal', 'tozero', 'nonnegative'], default='normal', action=ChildAction, parent=inputFileArgument)
 parserPlotAxisOptions.add_argument("--x-range-mode", help="choose range mode for y-axis (default %(default)s)", choices=['normal', 'tozero', 'nonnegative'], default='normal', action=ChildAction, parent=inputFileArgument)
 parserPlotAxisOptions.add_argument("--y-range-from", help="y-axis start (default %(default)s)", default='auto', sticky_default=True, choices=Range(None, None, ['auto']), action=ChildAction, parent=inputFileArgument)
@@ -1145,6 +1176,9 @@ for input in args.input:
     options.y_colour = f"'{options.x_colour}'" if options.x_colour is not None else None
     options.y_line_width_forced = 'y_line_width' in [i for (i, _) in options.ordered_args]
     options.x_line_width_forced = 'x_line_width' in [i for (i, _) in options.ordered_args]
+
+    options.y_autorange = "True" if options.y_autorange == 'on' else "False" if options.y_autorange == 'off' else f"'{options.y_autorange}'"
+    options.x_autorange = "True" if options.x_autorange == 'on' else "False" if options.x_autorange == 'off' else f"'{options.x_autorange}'"
 
     options.y_range_from = None if options.y_range_from == 'auto' else float(options.y_range_from)
     options.x_range_from = None if options.x_range_from == 'auto' else float(options.x_range_from)
@@ -2018,7 +2052,7 @@ for input in data:
                 else:  # Box and Violin
                     rawData = frame.iloc[:, colIndex].values
                     if all(x is None for x in rawData):
-                        if not args.quie:
+                        if not args.quiet:
                             print(f"WARNING: no data or only NaN found at column {colIndex} of frame '{inputFrameIndex}'", file=sys.stderr)
                         rawData[0] = 0
 
@@ -2298,6 +2332,8 @@ fig.add_trace(go.Violin(
     plotScript.write(f"{'# ' if options.x_title is None else ''}fig.update_xaxes(title_text='{options.x_title}', col={options.col}, row={options.row})\n")
     plotScript.write(f"fig.update_yaxes(tickcolor={options.y_colour}, tickformat='{options.y_tick_format}', ticksuffix='{options.y_tick_suffix}', tickprefix='{options.y_tick_prefix}', col={options.col}, row={options.row}, secondary_y={options.y_secondary})\n")
     plotScript.write(f"fig.update_xaxes(tickcolor={options.x_colour}, tickformat='{options.x_tick_format}', ticksuffix='{options.x_tick_suffix}', tickprefix='{options.x_tick_prefix}', col={options.col}, row={options.row})\n")
+    plotScript.write(f"fig.update_yaxes(autorange={options.y_autorange}, col={options.col}, row={options.row}, secondary_y={options.y_secondary})\n")
+    plotScript.write(f"fig.update_xaxes(autorange={options.x_autorange}, col={options.col}, row={options.row})\n")
     if options.y_range_from is not None or options.y_range_to is not None:
         options.y_range_from = options.y_range_from if options.y_range_from is not None else plotRange[1]['min']
         options.y_range_to = options.y_range_to if options.y_range_to is not None else plotRange[1]['max']
