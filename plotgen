@@ -40,7 +40,7 @@ import xopen
 import seaborn
 
 __prog__ = 'plotgen'
-__version__ = '0.6.2'
+__version__ = '0.6.3'
 __url__ = 'https://github.com/bgottschall/plotgen'
 
 
@@ -266,8 +266,8 @@ class DataframeActions:
             '>': lambda x: any(float(x) > float(y) if isFloat([x, y]) else x > y for y in data),
             '<=': lambda x: any(((pandas.isna(x) and pandas.isna(y)) or float(x) <= float(y) if isFloat([x, y]) else x <= y) for y in data),
             '>=': lambda x: any(((pandas.isna(x) and pandas.isna(y)) or float(x) >= float(y) if isFloat([x, y]) else x >= y) for y in data),
-            'in': lambda x: any(str(y) in str(x) for y in data),
-            'notin': lambda x: all(str(y) not in str(x) for y in data),
+            'in': lambda x: x in data,
+            'notin': lambda x: x not in data,
             'xor': lambda x: all(bool(int(y) ^ int(x)) if str(x).isdigit and str(y).isdigit else False for y in data),
             'nor': lambda x: all(not bool(int(y) ^ int(x)) if str(x).isdigit and str(y).isdigit else False for y in data),
             'and': lambda x: all(bool(int(y) & int(x)) if str(x).isdigit and str(y).isdigit else False for y in data),
