@@ -3,8 +3,8 @@
 pip: dist
 	twine upload dist/*
 
-dist: setup.py
-	python $^ bdist_wheel
+dist: setup.py plotgen
+	python $(firstword $^) bdist_wheel
 
 tests plots:
 	$(MAKE) -C $@
