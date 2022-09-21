@@ -40,7 +40,7 @@ import xopen
 import seaborn
 
 __prog__ = 'plotgen'
-__version__ = '0.6.3'
+__version__ = '0.6.4'
 __url__ = 'https://github.com/bgottschall/plotgen'
 
 
@@ -254,9 +254,11 @@ class DataframeActions:
         'pandasSelfFunctions': ['abs', 'cumsum', 'cummax', 'cummin', 'cumprod', 'rank', 'diff', 'round', 'floor', 'ceil'],
         'specialSelfFunctions': ['set', 'cset', 'polyfit', 'append' , 'prepend'],
         'amidComputeFunctions': ['add', 'sub', 'mul', 'div', 'truediv', 'floordiv', 'mod', 'pow', 'radd', 'rsub', 'rmul', 'rdiv', 'rtruediv', 'rfloordiv', 'rmod', 'rpow', 'lt', 'gt', 'le', 'ge', 'ne', 'eq'],
-        'onlyAmidComputeFunctions' : ['concat'],
+        'onlyAmidComputeFunctions' : ['concat', 'copy'],
         'soloComputeFunctions': ['sum', 'mean', 'median', 'std', 'var', 'count', 'skew', 'mad', 'min', 'max']
     }
+
+    conditions = ['=', '!=', '<', '>', '<=', '>=', 'in', 'notin', 'xor', 'nor', 'and', 'nand']
 
     def filterFunction(frame, data, mode, quiet=False):
         filterMap = {
@@ -831,107 +833,107 @@ parserFileOptions = parser.add_argument_group('file parsing options')
 
 inputFileArgument = parser.add_argument('-i', '--input', type=str, help="input file to parse", nargs="+", action=ParentAction, required=True)
 # Per File Parsing Arguments
-parserFileOptions.add_argument("--special-column-prefix", help="special columns (or ignore columns) starting with (default %(default)s)", type=str, default='_', sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--special-column-prefix", help="special columns (_label, _error, _offset, _colour) starting with (default %(default)s)", type=str, default='_', sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--comment", help="ignores lines starting with (default %(default)s)", type=str, default='#', sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--delimiter", help="data delimiter (auto detected by default)", type=str, default=None, sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--no-columns", help="do not use a column row", default=False, sticky_default=True, nargs=0, sub_action="store_true", action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--no-index", help="do not use a index column", default=False, sticky_default=True, nargs=0, sub_action="store_true", action=ChildAction, parent=inputFileArgument)
 
 
-parserFileOptions.add_argument("--index-icolumn", help="set index column index", type=int, sticky_default=True, choices=Range(None, None), default=None, action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--index-column", help="set index column", default=None, type=str, sticky_default=True, action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--columns-irow", help="set index column", type=int, sticky_default=True, action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--columns-row", help="set index column", default=None, type=str, sticky_default=True, action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--reset-index", help="reset index back into dataframe as first column", default=False, nargs=0, sub_action="store_true", sticky_default=True, action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--reset-columns", help="reset index back into dataframe as first column", default=False, nargs=0, sub_action="store_true", sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--index-icolumn", help="set index column by index", type=int, sticky_default=True, choices=Range(None, None), default=None, action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--index-column", help="set index column by name", default=None, type=str, sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--columns-irow", help="set columns row by index", type=int, sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--columns-row", help="set columns row by name", default=None, type=str, sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--reset-index", help="reset index back as first column", default=False, nargs=0, sub_action="store_true", sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--reset-columns", help="reset columns back as first row", default=False, nargs=0, sub_action="store_true", sticky_default=True, action=ChildAction, parent=inputFileArgument)
 
 parserFileOptions.add_argument("--select-mode", help="select row/columns policy (default %(default)s)", type=str, default='all', choices=['all', 'first', 'last'], action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--ignore-icolumns", help="ignore column indexes", type=SliceType(), default=[], sticky_default=True, nargs='+', action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--ignore-columns", help="ignore columns", type=str, default=[], sticky_default=True, nargs='+', action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--ignore-irows", help="ignore row indexes", type=SliceType(), default=[], sticky_default=True, nargs='+', action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--ignore-rows", help="ignore rows", type=str, default=[], sticky_default=True, nargs='+', action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--ignore-iframes", help="ignore frame indexes", type=SliceType(), default=[], sticky_default=True, nargs='+', action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--ignore-frames", help="ignore frames", type=str, default=[], sticky_default=True, nargs='+', action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--ignore-icolumns", help="ignore column by indexes (or slices)", type=SliceType(), default=[], sticky_default=True, nargs='+', action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--ignore-columns", help="ignore columns by names", type=str, default=[], sticky_default=True, nargs='+', action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--ignore-irows", help="ignore row by indexes (or slices)", type=SliceType(), default=[], sticky_default=True, nargs='+', action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--ignore-rows", help="ignore rows by name", type=str, default=[], sticky_default=True, nargs='+', action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--ignore-iframes", help="ignore frame by indexes (or slices)", type=SliceType(), default=[], sticky_default=True, nargs='+', action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--ignore-frames", help="ignore frames by names", type=str, default=[], sticky_default=True, nargs='+', action=ChildAction, parent=inputFileArgument)
 
-parserFileOptions.add_argument("--select-irows", help="select row indexes", type=SliceType(), default=[], sticky_default=True, nargs='+', action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--select-rows", help="select rows", type=str, default=[], sticky_default=True, nargs='+', action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--select-icolumns", help="select column indexes", type=SliceType(), default=[], sticky_default=True, nargs='+', action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--select-columns", help="select columns", type=str, default=[], sticky_default=True, nargs='+', action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--select-iframes", help="select frame indexes", type=SliceType(), default=[], sticky_default=True, nargs='+', action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--select-frames", help="select frames", type=str, default=[], sticky_default=True, nargs='+', action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--select-irows", help="select row by indexes (or slices)", type=SliceType(), default=[], sticky_default=True, nargs='+', action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--select-rows", help="select rows by names", type=str, default=[], sticky_default=True, nargs='+', action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--select-icolumns", help="select column by indexes (or slices)", type=SliceType(), default=[], sticky_default=True, nargs='+', action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--select-columns", help="select columns by names", type=str, default=[], sticky_default=True, nargs='+', action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--select-iframes", help="select frame by indexes (or slices)", type=SliceType(), default=[], sticky_default=True, nargs='+', action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--select-frames", help="select frames by name", type=str, default=[], sticky_default=True, nargs='+', action=ChildAction, parent=inputFileArgument)
 
-parserFileOptions.add_argument("--filter-irows", help="filter data from rows after indexes", type=str, default=[], sticky_default=True, nargs='+', action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--filter-row", help="filter data from rows", type=str, default=[], sticky_default=True, nargs='+', action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--filter-icolumns", help="filter data from columns after indexes", type=str, default=[], sticky_default=True, nargs='+', action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--filter-column", help="filter data from columns", type=str, default=[], sticky_default=True, nargs='+', action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--filter-irows", help=f'filter columns by the content of the row index (or slice) (e.g. --filter-irows 0 >= 3), available conditions: {{{",".join(DataframeActions.conditions)}}}', type=str, default=[], sticky_default=True, nargs='+', action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--filter-row", help=f'filter columns by the content of the row name (e.g. --filter-row type in alu fp br), available conditions: {{{",".join(DataframeActions.conditions)}}}', type=str, default=[], sticky_default=True, nargs='+', action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--filter-icolumns", help=f'filter rows by the content of the column index (or slice) (e.g. --filter-icolumn 1 xor 0x9 0xc), available conditions: {{{",".join(DataframeActions.conditions)}}}', type=str, default=[], sticky_default=True, nargs='+', action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--filter-column", help=f'filter rows by the content of the column name (e.g. --filter-column time > 10), available conditions: {{{",".join(DataframeActions.conditions)}}}', type=str, default=[], sticky_default=True, nargs='+', action=ChildAction, parent=inputFileArgument)
 
-parserFileOptions.add_argument("--sort-order", help="sort rows after or column in this order (default %(default)s)", default='asc', choices=['asc', 'desc'], action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--sort-function", help="sort function (default 'none')", default=['none'], nargs='+', choices=['none'] + DataframeActions.functions['soloComputeFunctions'], action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--sort-rows", help="sort rows with selected sort function", default=False, sub_action="store_true", nargs=0, sticky_default=True, action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--sort-columns", help="sort columns with selected sort function", default=False, sub_action="store_true", nargs=0, sticky_default=True, action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--sort-by-irows", help="sort column after these row indexes", type=SliceType({'columns': 'columns', **defaultSliceTypeTranslator}), default=[], nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--sort-by-rows", help="sort column after these row names", type=str, default=[], nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--sort-by-icolumns", help="sort rows after these column indexes", type=SliceType({'index': 'index', **defaultSliceTypeTranslator}), default=[], nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--sort-by-columns", help="sort rows after these column names", type=str, default=[], nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--reverse-columns", help="reverse columns order", default=False, sub_action="store_true", nargs=0, sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--sort-order", help="sets sort order for sort operations (default %(default)s)", default='asc', choices=['asc', 'desc'], action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--sort-function", help="use a sort function when sorting across multiple rows or columns (default 'none'), none will sort the rows or columns in given order", default=['none'], nargs='+', choices=['none'] + DataframeActions.functions['soloComputeFunctions'], action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--sort-rows", help="sort all rows", default=False, sub_action="store_true", nargs=0, sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--sort-columns", help="sort all columns", default=False, sub_action="store_true", nargs=0, sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--sort-by-irows", help="sort column after rows by indexes (or slices)", type=SliceType({'columns': 'columns', **defaultSliceTypeTranslator}), default=[], nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--sort-by-rows", help="sort column after rows names", type=str, default=[], nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--sort-by-icolumns", help="sort rows after columns by indexes (or slices)", type=SliceType({'index': 'index', **defaultSliceTypeTranslator}), default=[], nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--sort-by-columns", help="sort rows after columns by names", type=str, default=[], nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--reverse-columns", help="reverse column order", default=False, sub_action="store_true", nargs=0, sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--reverse-rows", help="reverse row order", default=False, sub_action="store_true", nargs=0, sticky_default=True, action=ChildAction, parent=inputFileArgument)
 
-parserFileOptions.add_argument("--data-scale", help="scales data (default %(default)s)", type=float, default=1, choices=Range(None, None), sticky_default=True, action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--data-offset", help="offsets data (default %(default)s)", type=float, default=0, choices=Range(None, None), sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--data-scale", help="scales all data by this value (equivalent to --apply-function mul <x> --apply-icolumns :)", type=float, default=1, choices=Range(None, None), sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--data-offset", help="offsets all data by this value (equivalent to --apply-function add <x> --apply-icolumns :)", type=float, default=0, choices=Range(None, None), sticky_default=True, action=ChildAction, parent=inputFileArgument)
 
 parserFileOptions.add_argument("--normalise-function", help=f"normalise function (default '{DataframeActions.functions['soloComputeFunctions'][0]}')", type=str, default=[DataframeActions.functions['soloComputeFunctions'][0]], nargs='+', choices=DataframeActions.functions['soloComputeFunctions'], sticky_default=True, action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--normalise-columns", help="normalise columns with selected normalise function", default=False, nargs=0, sub_action="store_true", sticky_default=True, action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--normalise-rows", help="normalise rows with selected normalise function", default=False, nargs=0, sub_action="store_true", sticky_default=True, action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--normalise-to", help="normalise data to constant", type=float, default=0, choices=Range(None, None), sticky_default=True, action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--normalise-to-icolumn", help="normalise to this column index", type=SliceType(), default=None, sticky_default=True, action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--normalise-to-column", help="normalise to this column", type=str, default=None, sticky_default=True, action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--normalise-to-irow", help="normalise to this row index", type=SliceType(), default=None, sticky_default=True, action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--normalise-to-row", help="normalise to this row", type=str, default=None, sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--normalise-columns", help="normalise all columns with selected normalise function", default=False, nargs=0, sub_action="store_true", sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--normalise-rows", help="normalise all rows with selected normalise function", default=False, nargs=0, sub_action="store_true", sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--normalise-to", help="normalise data to constant (equivalent to --apply-function div <x> --apply-icolumns :)", type=float, default=0, choices=Range(None, None), sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--normalise-to-icolumn", help="normalise all columns to this column by index (or slice)", type=SliceType(), default=None, sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--normalise-to-column", help="normalise all columns to this column by name", type=str, default=None, sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--normalise-to-irow", help="normalise all rows to this row by index (or slice)", type=SliceType(), default=None, sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--normalise-to-row", help="normalise all rows to this row by name", type=str, default=None, sticky_default=True, action=ChildAction, parent=inputFileArgument)
 
-parserFileOptions.add_argument("--add-at", help="add at the front or back of the dataframe", type=str, default='back', choices=['front', 'back'], action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--add-function", help=f"use this function to compute new row/column (default '{DataframeActions.functions['soloComputeFunctions'][0]}')", type=str, default=[DataframeActions.functions['soloComputeFunctions'][0]], nargs='+', action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--add-at", help="add rows or columns at the front or back of the frame", type=str, default='back', choices=['front', 'back'], action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--add-function", help=f"use this function to compute new row or column (default '{DataframeActions.functions['soloComputeFunctions'][0]}')", type=str, default=[DataframeActions.functions['soloComputeFunctions'][0]], nargs='+', action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--add-column", help="add a new column with name", type=str, default=None, sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--add-row", help="add a new row with name", type=str, default=None, sticky_default=True, action=ChildAction, parent=inputFileArgument)
 
-parserFileOptions.add_argument("--group-function", help=f"use this function to compute grouped dataframe (default '{DataframeActions.functions['soloComputeFunctions'][0]}')", type=str, default=[DataframeActions.functions['soloComputeFunctions'][0]], nargs='+', choices=DataframeActions.functions['soloComputeFunctions'], action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--group-by-icolumns", help="group by this column index", type=SliceType({'index': 'index', **defaultSliceTypeTranslator}), default=[], nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--group-by-columns", help="group by this column", type=str, default=[], nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--group-by-irows", help="group by this row index", type=SliceType({'columns': 'columns', **defaultSliceTypeTranslator}), default=[], nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--group-by-rows", help="group by this row", type=str, default=[], nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--group-function", help=f"use this function to group columns or rows (default '{DataframeActions.functions['soloComputeFunctions'][0]}')", type=str, default=[DataframeActions.functions['soloComputeFunctions'][0]], nargs='+', choices=DataframeActions.functions['soloComputeFunctions'], action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--group-by-icolumns", help="group by this column index (or slice, or frame index)", type=SliceType({'index': 'index', **defaultSliceTypeTranslator}), default=[], nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--group-by-columns", help="group by this column name", type=str, default=[], nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--group-by-irows", help="group by this row index (or slice, or frame columns)", type=SliceType({'columns': 'columns', **defaultSliceTypeTranslator}), default=[], nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--group-by-rows", help="group by this row name", type=str, default=[], nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
 
 parserFileOptions.add_argument("--abs", help="convert all values to absolute values", type=str, default=False, nargs=0, sub_action="store_true", sticky_default=True, action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--apply-mode", help="apply first row/column parameter on all others or in reverse (default %(default)s)", type=str, default='normal', choices=['normal', 'reverse'], action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--apply-function", help="use this function to compute new row/column", type=str, nargs='+', default=['mean'], action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--apply-icolumns", help="compute function on multiple column indexes", type=SliceType(), default=[], nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--apply-irows", help="compute function on multiple row indexes", type=SliceType(), default=[], nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--apply-columns", help="compute function on multiple columns", type=str, default=[], nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--apply-rows", help="compute function on multiple rows", type=str, default=[], nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--apply-mode", help="apply function from first row or column argument on to the rest or in reverse (default %(default)s)", type=str, default='normal', choices=['normal', 'reverse'], action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--apply-function", help=f'apply this function onto rows or columns or between rows or columns. Only applied on row/column itself -- {{{",".join(DataframeActions.functions["pandasSelfFunctions"] + DataframeActions.functions["specialSelfFunctions"])}}}, applied with parameter on row/column itself or between rows/columns without parameter -- {{{",".join(DataframeActions.functions["amidComputeFunctions"])}}}, only applied between rows/columns -- {{{",".join(DataframeActions.functions["onlyAmidComputeFunctions"])}}}. E.g. --apply-function add 2 --apply-icolumns all (adds 2 to all columns), --apply-function add --apply-icolumns :5 5: (adds the first 5 columns to all columns after the 5th), --apply-function cset = nan 0 --apply-icolumns : (conditional set, sets all NaN values to 0), --apply-function polyfit 2 --apply-icolumn 0 (tries to do a order 2 polynomial fit of the first column), --apply-function concat " -> " --apply-icolumn 0 1 (concatenates the first onto the second column with " -> " as separator), ...', type=str, nargs='+', default=['abs'], action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--apply-icolumns", help="apply function on or between columns by indexes (or slices)", type=SliceType(), default=[], nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--apply-columns", help="apply function on or between columns by name", type=str, default=[], nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--apply-irows", help="apply function on or between rows by indexes (or slices)", type=SliceType(), default=[], nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--apply-rows", help="apply function on or between rows by name", type=str, default=[], nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
 
-parserFileOptions.add_argument("--column-names", help="rename columns", type=str, sticky_default=True, default=[], nargs='+', action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--icolumn-names", help="rename columns", type=str, sticky_default=True, default=[], nargs='+', action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--row-names", help="rename rows", type=str, sticky_default=True, default=[], nargs='+', action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--irow-names", help="rename rows", type=str, sticky_default=True, default=[], nargs='+', action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--frame-names", help="rename frames", type=str, sticky_default=True, default=[], nargs='+', action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--iframe-names", help="rename frames", type=str, sticky_default=True, default=[], nargs='+', action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--drop-nan", help="dropping rows/columns that are completely empty", sticky_default=True, default=False, nargs=0, sub_action="store_true", action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--drop-any-nan", help="dropping rows/columns that contain empty values", sticky_default=True, default=False, nargs=0, sub_action="store_true", action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--transpose", help="transpose data", default=False, sticky_default=True, nargs=0, sub_action="store_true", action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--print", help="print out each parsed input file", default=False, nargs=0, sub_action="store_true", action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--column-names", help="rename columns, start from the first column (e.g. --column-names first second third)", type=str, sticky_default=True, default=[], nargs='+', action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--icolumn-names", help="rename specific columns selected by index or slice (e.g. --icolumn names 3: third fourth fifth)", type=str, sticky_default=True, default=[], nargs='+', action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--row-names", help="rename rows, start from the first (e.g. --row-names first second third)", type=str, sticky_default=True, default=[], nargs='+', action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--irow-names", help="rename specific rows selected by index or slice (e.g. --irow-names 3::2 third fifth seventh)", type=str, sticky_default=True, default=[], nargs='+', action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--frame-names", help="rename frames, start from the first (e.g. --frame-names first second third)", type=str, sticky_default=True, default=[], nargs='+', action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--iframe-names", help="rename specific frames selected by index or slice (--iframe-names -1 last)", type=str, sticky_default=True, default=[], nargs='+', action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--drop-nan", help="drop rows/columns that only contain NaN values", sticky_default=True, default=False, nargs=0, sub_action="store_true", action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--drop-any-nan", help="drop rows/columns that contain NaN values", sticky_default=True, default=False, nargs=0, sub_action="store_true", action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--transpose", help="transpose rows and columns", default=False, sticky_default=True, nargs=0, sub_action="store_true", action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--print", help="print out all active frame", default=False, nargs=0, sub_action="store_true", action=ChildAction, parent=inputFileArgument)
 
-parserFileOptions.add_argument("--join", help="outer join input files on columns or index", default='none', choices=['none', 'index', 'columns'], sticky_default=True, action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--split-icolumn", help="split frame along this column index ('_index' splits by index)", type=str, sticky_default=True, choices=Range(None, None, ['index']), default=None, action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--split-column", help="split frame along this column", type=str, sticky_default=True, default=None, action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--split-irow", help="split frame along this row index ('_columns' splits by columns)", type=str, sticky_default=True, choices=Range(None, None, ['columns']), default=None, action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--split-row", help="split frame along this row", type=str, sticky_default=True, default=None, action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--join", help="outer join input files on columns or index", default='index', choices=['index', 'columns'], sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--split-icolumn", help="split frames into multiple frames along this column by index (or slice, or frame index)", type=str, sticky_default=True, choices=Range(None, None, ['index']), default=None, action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--split-column", help="split frames into mutiple frames along this column by name", type=str, sticky_default=True, default=None, action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--split-irow", help="split frames into multiple frames along this row by index (or slice, or frame columns)", type=str, sticky_default=True, choices=Range(None, None, ['columns']), default=None, action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--split-row", help="split frames into multiple frames along this row by name", type=str, sticky_default=True, default=None, action=ChildAction, parent=inputFileArgument)
 
-parserFileOptions.add_argument("--focus-iframes", help="set the frame focus for file options (default all)", type=SliceType(), default=[], nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--defocus-iframes", help="remove frames from focus for file options", type=SliceType(), default=[], nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--focus-frames", help="set the frame focus for file options (default all)", type=str, default=[], nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--defocus-frames", help="remove frames from focus for file options", type=str, default=[], nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--focus-iframes", help="set the focus on these frames by index (or slice)", type=SliceType(), default=[], nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--focus-frames", help="set the focus on these frames by name", type=str, default=[], nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--defocus-iframes", help="remote the focus from these frames by index (or slice)", type=SliceType(), default=[], nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--defocus-frames", help="remove the focus from these frames by name", type=str, default=[], nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
 
-parserFileOptions.add_argument("--print-precision", help="set explicit output prevision for text and console output (default %(default)s)", type=str, default='default', choices=Range(0, None, ['default']), action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--file", help="save data frames to text files (one file per frame)", default=None, type=str, nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--pickle", help="pickle data frames to file (one file containing all frames)", default=None, type=str, sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--print-precision", help="set output precision for text and console output (default %(default)s)", type=str, default='default', choices=Range(0, None, ['default']), action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--file", help="save frames to files (one file per frame, stdout for standard output)", default=None, type=str, nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--pickle", help="save pickled frames to files (one file containing all frames, stdout for standard output)", default=None, type=str, sticky_default=True, action=ChildAction, parent=inputFileArgument)
 
 # Per File Plotting Arguments:
 parserPlotOptions = parser.add_argument_group('plot options')
@@ -1013,12 +1015,12 @@ parserPlotAxisOptions.add_argument("--y-tick-hide", help="set format of y-axis t
 parserPlotAxisOptions.add_argument("--x-tick-hide", help="set format of y-axis ticks", default=False, nargs=0, sub_action="store_true", sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserPlotAxisOptions.add_argument("--y-tick-format", help="set format of y-axis ticks", default='', sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserPlotAxisOptions.add_argument("--x-tick-format", help="set format of x-axis ticks", default='', sticky_default=True, action=ChildAction, parent=inputFileArgument)
-parserPlotAxisOptions.add_argument("--y-tick-suffix", help="add suffix to y-axis ticks", default='', sticky_default=True, action=ChildAction, parent=inputFileArgument)
-parserPlotAxisOptions.add_argument("--x-tick-suffix", help="add suffix to x-axis ticks", default='', sticky_default=True, action=ChildAction, parent=inputFileArgument)
-parserPlotAxisOptions.add_argument("--y-tick-prefix", help="add prefix to y-axis ticks", default='', sticky_default=True, action=ChildAction, parent=inputFileArgument)
-parserPlotAxisOptions.add_argument("--x-tick-prefix", help="add prefix to x-axis ticks", default='', sticky_default=True, action=ChildAction, parent=inputFileArgument)
-parserPlotAxisOptions.add_argument("--y-ticks", help="how to draw y ticks (default '%(default)s')", choices=['', 'inside', 'outside'], default='', sticky_default=True, action=ChildAction, parent=inputFileArgument)
-parserPlotAxisOptions.add_argument("--x-ticks", help="how to draw x ticks (default '%(default)s')", choices=['', 'inside', 'outside'], default='', sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserPlotAxisOptions.add_argument("--y-tick-suffix", help="set suffix to y-axis ticks", default='', sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserPlotAxisOptions.add_argument("--x-tick-suffix", help="set suffix to x-axis ticks", default='', sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserPlotAxisOptions.add_argument("--y-tick-prefix", help="set prefix to y-axis ticks", default='', sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserPlotAxisOptions.add_argument("--x-tick-prefix", help="set prefix to x-axis ticks", default='', sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserPlotAxisOptions.add_argument("--y-ticks", help="where to draw the y-axis ticks (default '%(default)s')", choices=['', 'inside', 'outside'], default='', sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserPlotAxisOptions.add_argument("--x-ticks", help="where to draw the x-axis ticks (default '%(default)s')", choices=['', 'inside', 'outside'], default='', sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserPlotAxisOptions.add_argument("--y-tickmode", help="tick mode y-axis (default '%(default)s')", choices=['auto', 'linear', 'array'], default='auto', sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserPlotAxisOptions.add_argument("--x-tickmode", help="tick mode x-axis (default '%(default)s')", choices=['auto', 'linear', 'array'], default='auto', sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserPlotAxisOptions.add_argument("--y-nticks", help="number of ticks on y-axis (only tick mode auto) (default %(default)s)", choices=Range(0,), default=0, sticky_default=True, action=ChildAction, parent=inputFileArgument)
@@ -1388,7 +1390,7 @@ for input in args.input:
     addAt = 'back'
     addFunction = [DataframeActions.functions['soloComputeFunctions'][0]]
     applyMode = 'normal'
-    applyFunction = [DataframeActions.functions['soloComputeFunctions'][0]]
+    applyFunction = [DataframeActions.functions['pandasSelfFunctions'][0]]
     groupFunction = [DataframeActions.functions['soloComputeFunctions'][0]]
     sortOrder = 'asc'
     outputPrecision = None
