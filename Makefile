@@ -4,6 +4,7 @@ pip: dist
 	twine upload dist/*
 
 dist: setup.py plotgen
+	rm -f dist/*
 	python $(firstword $^) bdist_wheel
 
 tests plots:

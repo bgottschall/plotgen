@@ -40,7 +40,7 @@ import xopen
 import seaborn
 
 __prog__ = 'plotgen'
-__version__ = '0.6.4'
+__version__ = '0.6.5'
 __url__ = 'https://github.com/bgottschall/plotgen'
 
 
@@ -409,7 +409,7 @@ class DataframeActions:
     def sortRows(dataframe, function=['none'], order='asc'):
         functionName = function[0]
         if functionName == 'none':
-            sortKey = dataframe.T.reset_index(drop=True).T
+            sortKey = dataframe.reset_index(drop=True).T.reset_index(drop=True).T
             sortKey = sortKey.sort_values(by=sortKey.columns.tolist(), axis=0, ascending=(order == 'asc'))
         else:
             sortKey = getattr(dataframe, functionName)(axis=1).reset_index(drop=True).sort_values(ascending=(order == 'asc'))
