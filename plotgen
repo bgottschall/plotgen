@@ -40,7 +40,7 @@ import xopen
 import seaborn
 
 __prog__ = 'plotgen'
-__version__ = '0.6.7'
+__version__ = '0.6.8'
 __url__ = 'https://github.com/bgottschall/plotgen'
 
 
@@ -586,7 +586,7 @@ class DataframeActions:
         return dataframe
 
     def addRow(dataframe, name, function=['mean'], where='back'):
-      return DataframeAction.addColumn(dataframe.T, name, function, where).T
+      return DataframeActions.addColumn(dataframe.T, name, function, where).T
 
     def addColumn(dataframe, name, function='mean', where='back'):
       functionName = function[0]
