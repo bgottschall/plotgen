@@ -252,8 +252,8 @@ def updateRange(_range, dataList):
 class DataframeActions:
     functions = {
         'pandasSelfFunctions': ['abs', 'cumsum', 'cummax', 'cummin', 'cumprod', 'rank', 'diff', 'round', 'floor', 'ceil'],
-        'specialSelfFunctions': ['set', 'cset', 'polyfit', 'append' , 'prepend'],
-        'amidComputeFunctions': ['add', 'sub', 'mul', 'div', 'truediv', 'floordiv', 'mod', 'pow', 'radd', 'rsub', 'rmul', 'rdiv', 'rtruediv', 'rfloordiv', 'rmod', 'rpow', 'lt', 'gt', 'le', 'ge', 'ne', 'eq'],
+        'specialSelfFunctions': ['set', 'cset', 'polyfit', 'append' , 'prepend', 'ljust', 'rjust', 'cjust'],
+        'amidComputeFunctions': ['add', 'sub', 'mul', 'div', 'truediv', 'floordiv', 'mod', 'pow', 'radd', 'rsub', 'rmul', 'rdiv', 'rtruediv', 'rfloordiv', 'rmod', 'rpow', 'lt', 'gt', 'le', 'ge', 'ne', 'eq', 'min', 'max'],
         'onlyAmidComputeFunctions' : ['concat', 'copy'],
         'soloComputeFunctions': ['sum', 'mean', 'median', 'std', 'var', 'count', 'skew', 'mad', 'min', 'max']
     }
@@ -397,6 +397,9 @@ class DataframeActions:
         dataframe.set_index(pandas.Series(lRows, name=dataframe.index.name), inplace=True)
         return dataframe
 
+    def sortRows(dataframe, function=['none'], order='asc'):
+      return DataframeActions.sortColumns(dataframe.T, function, order).T
+
     def sortColumns(dataframe, function=['none'], order='asc'):
         functionName = function[0]
         if functionName == 'none':
@@ -406,15 +409,6 @@ class DataframeActions:
             sortKey = getattr(dataframe, functionName)(axis=0).reset_index(drop=True).sort_values(ascending=(order == 'asc'))
         return dataframe.iloc[:, sortKey.index]
 
-    def sortRows(dataframe, function=['none'], order='asc'):
-        functionName = function[0]
-        if functionName == 'none':
-            sortKey = dataframe.reset_index(drop=True).T.reset_index(drop=True).T
-            sortKey = sortKey.sort_values(by=sortKey.columns.tolist(), axis=0, ascending=(order == 'asc'))
-        else:
-            sortKey = getattr(dataframe, functionName)(axis=1).reset_index(drop=True).sort_values(ascending=(order == 'asc'))
-        return dataframe.iloc[sortKey.index, :]
-
     def reverseColumns(dataframe):
         return dataframe.iloc[::, ::-1]
 
@@ -422,24 +416,9 @@ class DataframeActions:
         return dataframe.iloc[::-1]
 
     def sortColumnsByRowIds(dataframe, rowIds, function=['none'], order='asc', quiet=False):
-        functionName = function[0]
-        if not isinstance(rowIds, list):
-            rowIds = [rowIds]
-        sortSeries = 'columns' in rowIds or functionName != 'none'
-        if 'columns' in rowIds:
-            sortKey = dataframe.columns.to_series()
-        else:
-            sortKey = dataframe.iloc[rowIds].apply(pandas.to_numeric, errors="ignore")
-            if functionName != 'none':
-                sortKey = getattr(sortKey, functionName)(axis=0, numeric_only=True)
-
-        sortKey.reset_index(drop=True, inplace=True)
-        if sortSeries:
-            sortKey.sort_values(ascending=(order == 'asc'), inplace=True)
-        else:
-            sortKey.columns = range(sortKey.shape[1])
-            sortKey = sortKey.sort_values(by=sortKey.index.to_list(), axis=1, ascending=(order == 'asc')).T
-        return dataframe.iloc[:, sortKey.index]
+      rowIds = rowIds if isinstance(rowIds, list) else [rowIds]
+      rowIds = ['index' if x == 'columns' else x for x in rowIds]
+      return DataframeActions.sortRowsByColumnIds(dataframe.T, rowIds, function, order, quiet).T
 
     def sortRowsByColumnIds(dataframe, colIds, function=['none'], order='asc', quiet=False):
         functionName = function[0]
@@ -472,127 +451,22 @@ class DataframeActions:
         return dataframe / constant
 
     def normaliseRows(dataframe, function=['sum']):
-        functionName = function[0]
-
-        if functionName not in DataframeActions.functions['soloComputeFunctions']:
-            raise Exception(f'Normalise function \'{functionName}\' not found!')
-
-        normSeries = getattr(dataframe.apply(pandas.to_numeric, errors='coerce'), functionName)(axis=0)
-        return dataframe.div(normSeries, axis=1)
+      return DataframeActions.normaliseColumns(dataframe.T, function).T
 
     def normaliseColumns(dataframe, function=['sum']):
-        functionName = function[0]
+      functionName = function[0]
 
-        if functionName not in DataframeActions.functions['soloComputeFunctions']:
-            raise Exception(f'Normalise function \'{functionName}\' not found!')
+      if functionName not in DataframeActions.functions['soloComputeFunctions']:
+        raise Exception(f'Normalise function \'{functionName}\' not found!')
 
-        normSeries = getattr(dataframe.apply(pandas.to_numeric, errors='coerce'), functionName)(axis=1)
-        return dataframe.div(normSeries, axis=0)
+      normSeries = getattr(dataframe.apply(pandas.to_numeric, errors='coerce'), functionName)(axis=1)
+      return dataframe.div(normSeries, axis=0)
 
     def abs(dataframe):
         return dataframe.abs()
 
     def applyOnRows(dataframe, applyRowIds, targetRowIds=[], function=['abs'], applyMode='normal', quiet=False):
-        if not isinstance(applyRowIds, list):
-            applyRowIds = [applyRowIds]
-        if not isinstance(targetRowIds, list):
-            targetRowIds = [targetRowIds]
-        if not isinstance(function, list):
-            function = [function]
-
-        functionName = function[0]
-        functionParams = [numpy.nan if x in considerAsNaN else int(x) if str(x).isdigit() else float(x) if isFloat(x) else x for x in function[1:]]
-        colWarning = False
-
-        if functionName not in [x for y in [DataframeActions.functions[x] for x in DataframeActions.functions if x != 'soloComputeFunctions'] for x in y]:
-            raise Exception(f'apply function with name \'{functionName}\' unknown!')
-
-        with pandas.option_context('mode.chained_assignment', None):
-            if functionName in DataframeActions.functions['pandasSelfFunctions'] + DataframeActions.functions['specialSelfFunctions'] + (DataframeActions.functions['amidComputeFunctions'] if len(functionParams) > 0 else []):
-                applyRowIds += targetRowIds
-
-                if functionName in DataframeActions.functions['pandasSelfFunctions']:
-                    if functionName == 'abs':
-                        dataframe.iloc[applyRowIds, :] = dataframe.iloc[applyRowIds, :].abs().values
-                    elif functionName == 'ceil':
-                        dataframe.iloc[applyRowIds, :] = dataframe.iloc[applyRowIds, :].apply(numpy.ceil)
-                    elif functionName == 'floor':
-                        dataframe.iloc[applyRowIds, :] = dataframe.iloc[applyRowIds, :].apply(numpy.floor)
-                    elif functionName == 'round':
-                        decimals = 0 if len(functionParams) == 0 or not str(functionParams[0]).isdigit() else int(functionParams[0])
-                        if len(functionParams) > 0 and not str(functionParams[0]).isdigit() and not quiet:
-                            print('WARNING: round function parameter needs to be an integer', file=sys.stderr)
-                        dataframe.iloc[applyRowIds, :] = dataframe.iloc[applyRowIds, :].round(decimals).values
-                    else:
-                        dataframe.iloc[applyRowIds, :] = getattr(dataframe.iloc[applyRowIds, :], functionName)(axis=1).values
-                elif functionName == 'append':
-                    if len(functionParams) == 0:
-                        print('WARNING: no parameters given for function append, skipping', file=sys.stderr)
-                    else:
-                        dataframe.iloc[applyRowIds, :] = (dataframe.iloc[applyRowIds, :].astype(str) + ''.join([str(x) for x in functionParams])).apply(pandas.to_numeric, errors='ignore')
-                elif functionName == 'prepend':
-                    if len(functionParams) == 0:
-                        print('WARNING: no parameters given for function prepend, skipping', file=sys.stderr)
-                    else:
-                        dataframe.iloc[applyRowIds, :] = (''.join([str(x) for x in functionParams]) + dataframe.iloc[applyRowIds, :].astype(str)).apply(pandas.to_numeric, errors='ignore')
-                elif functionName == 'set':
-                    if len(functionParams) == 0:
-                        print('WARNING: no parameters given for function set, using NaN instead!', file=sys.stderr)
-                        functionParams = [numpy.nan]
-                    dataframe.iloc[applyRowIds, :] = functionParams[0]
-                elif functionName == 'cset':
-                    if len(functionParams) < 3:
-                        raise Exception('ERROR: function conditional set requires minimum 3 parameters')
-                    for rowId in applyRowIds:
-                        mask = [i for (i, x) in enumerate(DataframeActions.filterFunction(dataframe.iloc[rowId, :], functionParams[1:-1], functionParams[0])) if x]
-                        if len(mask) > 0:
-                            dataframe.iloc[rowId, mask] = functionParams[-1]
-                elif functionName == 'polyfit':
-                    try:
-                        fitDim = 1 if len(functionParams) == 0 else int(functionParams[0])
-                    except Exception:
-                        raise Exception('ERROR: polyfit function parameter needs to be an integer')
-                    for rowIdx in applyRowIds:
-                        fitTarget = dataframe.iloc[rowIdx, :].apply(pandas.to_numeric, errors='coerce')
-                        if not quiet and fitTarget.isna().values.any():
-                            print('WARNING: NaN values are replaced with zero for polynomial fitting!', file=sys.stderr)
-                        fitTarget = fitTarget.fillna(0).to_list()
-                        fitAlong = dataframe.columns.to_list()
-                        if not all([isFloat(x) for x in fitAlong]):
-                            if not quiet and not colWarning:
-                                colWarning = True
-                                print('WARNING: columns are not numeric, will fit along a static number series!', file=sys.stderr)
-                            fitAlong = list(range(len(fitTarget)))
-                        dataframe.iloc[rowIdx, :] = numpy.polyval(numpy.polyfit(fitAlong, fitTarget, fitDim), fitAlong)
-                else:
-                    if any(not isFloat(x) for x in functionParams) and not quiet:
-                        print(f'WARNING: apply function {functionName} not compatible with non-float arguments!', file=sys.stderr)
-                    for param in [x for x in functionParams if isFloat(x)]:
-                        dataframe.iloc[applyRowIds, :] = getattr(dataframe.iloc[applyRowIds, :].apply(pandas.to_numeric, errors='coerce'), functionName)(param)
-            else:
-                # All other functions are computations between applyRowIds and targetRowIds
-                if len(targetRowIds) == 0:
-                    # If targetRowIds is empty, fill it with all rows not in applyRowIds
-                    targetRowIds = list(range(dataframe.shape[0]))
-                    targetRowIds = [r for r in targetRowIds if r not in applyRowIds]
-
-                if len(targetRowIds) > 0:
-                    if applyMode == 'reverse':
-                        targetRowIds, applyRowIds = applyRowIds, targetRowIds
-
-                    if functionName == 'concat':
-                        for targetRowIdx in targetRowIds:
-                            for applyRowIdx in applyRowIds:
-                                dataframe.iloc[targetRowIdx, :] = dataframe.iloc[targetRowIdx, :].astype(str).str.cat(dataframe.iloc[applyRowIdx, :].astype(str), join='right', sep=str(functionParams[0]) if len(functionParams) > 0 else '').apply(pandas.to_numeric, errors='ignore')
-                    elif functionName == 'copy':
-                        if len(applyRowIds) > 0 and not args.quiet:
-                            print('WARNING: only the last row has an effect with apply function copy!', file=sys.stderr)
-                        dataframe.iloc[targetRowIds, :] = dataframe.iloc[targetRowIds, :].apply(lambda _: dataframe.iloc[applyRowIds[-1], :], axis=1).values
-                    else:
-                        applyRows = [dataframe.iloc[rowIdx, :].apply(pandas.to_numeric, errors='coerce') for rowIdx in applyRowIds]
-                        for applyRow in applyRows:
-                            dataframe.iloc[targetRowIds, :] = getattr(dataframe.iloc[targetRowIds, :].apply(pandas.to_numeric, errors="coerce"), functionName)(applyRow, axis=1).values
-        return dataframe
+      return DataframeActions.applyOnColumns(dataframe.T, applyRowIds, targetRowIds, function, applyMode, quiet).T
 
     def applyOnColumns(dataframe, applyColumnIds, targetColumnIds=[], function=['abs'], applyMode='normal', quiet=False):
         if not isinstance(applyColumnIds, list):
@@ -648,6 +522,13 @@ class DataframeActions:
                         mask = [i for (i, x) in enumerate(DataframeActions.filterFunction(dataframe.iloc[:, columnId], functionParams[1:-1], functionParams[0])) if x]
                         if len(mask) > 0:
                             dataframe.iloc[mask, columnId] = functionParams[-1]
+                elif functionName in ['rjust', 'ljust', 'cjust']:
+                    if len(functionParams) < 1:
+                        raise Exception(f'ERROR: function {functionName} at least 1 paramter')
+                    padWidth = functionParams[0]
+                    padChar = str(functionParams[1]) if len(functionParams) > 1 else ' '
+                    padFunc = functionName if functionName != 'cjust' else 'center'
+                    dataframe.iloc[:, applyColumnIds] = dataframe.iloc[:, applyColumnIds].applymap(lambda x: getattr(str(x), padFunc)(padWidth, padChar), 'ignore')
                 elif functionName == 'polyfit':
                     try:
                         fitDim = 1 if len(functionParams) == 0 else int(functionParams[0])
@@ -665,6 +546,11 @@ class DataframeActions:
                                 print('WARNING: index is not numeric, will fit along a static number series!', file=sys.stderr)
                             fitAlong = list(range(len(fitTarget)))
                         dataframe.iloc[:, columnIdx] = numpy.polyval(numpy.polyfit(fitAlong, fitTarget, fitDim), fitAlong)
+                elif functionName in ['min', 'max']:
+                    if any(not isFloat(x) for x in functionParams) and not quiet:
+                        print(f'WARNING: applying function {functionName} not compatible with non-float arguments!', file=sys.stderr)
+                    param = getattr(numpy, functionName)([x for x in functionParams if isFloat(x)])
+                    dataframe.iloc[:, applyColumnIds] = dataframe.iloc[:, applyColumnIds].apply(pandas.to_numeric, errors='coerce').applymap(lambda x: getattr(numpy, functionName)([x, param]), 'ignore')
                 else:
                     if any(not isFloat(x) for x in functionParams) and not quiet:
                         print(f'WARNING: applying function {functionName} not compatible with non-float arguments!', file=sys.stderr)
@@ -687,8 +573,12 @@ class DataframeActions:
                                 dataframe.iloc[:, targetColumnIdx] = dataframe.iloc[:, targetColumnIdx].astype(str).str.cat(dataframe.iloc[:, applyColumnIdx].astype(str), join='right', sep=str(functionParams[0]) if len(functionParams) > 0 else '').apply(pandas.to_numeric, errors='ignore')
                     elif functionName == 'copy':
                         if len(applyColumnIds) > 0 and not args.quiet:
-                            print('WARNING: only the last column has an effect with apply function copy!', file=sys.stderr)
+                            print('WARNING: only the last column/row has an effect with apply function copy!', file=sys.stderr)
                         dataframe.iloc[:, targetColumnIds] = dataframe.iloc[:, targetColumnIds].apply(lambda _: dataframe.iloc[:, applyColumnIds[-1]], axis=0).values
+                    elif functionName in ['min', 'max']:
+                        applyColumn = getattr(dataframe.iloc[:, applyColumnIds].apply(pandas.to_numeric, errors='coerce'), functionName)(axis=1)
+                        for targetColumn in targetColumnIds:
+                          dataframe.iloc[:, targetColumn] = getattr(pandas.concat([applyColumn, dataframe.iloc[:, targetColumn].apply(pandas.to_numeric, errors='coerce')], axis=1), functionName)(axis=1)
                     else:
                         applyColumns = [dataframe.iloc[:, columnIdx].apply(pandas.to_numeric, errors='coerce') for columnIdx in applyColumnIds]
                         for applyColumn in applyColumns:
@@ -696,28 +586,24 @@ class DataframeActions:
         return dataframe
 
     def addRow(dataframe, name, function=['mean'], where='back'):
-        functionName = function[0]
-        functionParams = [numpy.nan if x in considerAsNaN else int(x) if str(x).isdigit() else float(x) if isFloat(x) else x for x in function[1:]]
-        if functionName == 'set':
-            if len(functionParams) == 0:
-                raise Exception('--add-function set requires one parameter as set constant')
-            newRow = pandas.DataFrame([[functionParams[0]] * dataframe.shape[1]], index=[name], columns=dataframe.columns)
-        else:
-            newRow = getattr(dataframe.apply(pandas.to_numeric, errors='coerce'), functionName)(axis=0)
-            newRow = newRow.to_frame(name).transpose()
-        return pandas.concat([dataframe, newRow], axis=0) if where == 'back' else pandas.concat([newRow, dataframe], axis=0)
+      return DataframeAction.addColumn(dataframe.T, name, function, where).T
 
     def addColumn(dataframe, name, function='mean', where='back'):
-        functionName = function[0]
-        functionParams = [numpy.nan if x in considerAsNaN else int(x) if str(x).isdigit() else float(x) if isFloat(x) else x for x in function[1:]]
-        if functionName == 'set':
-            if len(functionParams) == 0:
-                raise Exception('--add-function set requires one parameter as set constant')
-            newCol = pandas.Series(data=[functionParams[0]] * dataframe.shape[0], name=name, index=dataframe.index)
-        else:
-            newCol = getattr(dataframe.apply(pandas.to_numeric, errors='coerce'), functionName)(axis=1)
-            newCol.name = name
-        return pandas.concat([dataframe, newCol], axis=1) if where == 'back' else pandas.concat([newCol, dataframe], axis=1)
+      functionName = function[0]
+      functionParams = [numpy.nan if x in considerAsNaN else int(x) if str(x).isdigit() else float(x) if isFloat(x) else x for x in function[1:]]
+      if functionName == 'set':
+        if len(functionParams) == 0:
+          raise Exception('--add-function set requires one parameter as set constant')
+        newCol = pandas.Series(data=[functionParams[0]] * dataframe.shape[0], name=name, index=dataframe.index)
+      else:
+        newCol = getattr(dataframe.apply(pandas.to_numeric, errors='coerce'), functionName)(axis=1)
+        newCol.name = name
+      return pandas.concat([dataframe, newCol], axis=1) if where == 'back' else pandas.concat([newCol, dataframe], axis=1)
+
+    def groupByRowIds(dataframe, rowIds, function=['sum']):
+      rowIds = rowIds if isinstance(rowIds, list) else [rowIds]
+      rowIds = ['index' if x == 'columns' else x for x in rowIds]
+      return DataframeActions.groupByColumnIds(dataframe.T, rowIds, function).T
 
     def groupByColumnIds(dataframe, columnIds, function=['sum']):
         functionName = function[0]
@@ -736,14 +622,11 @@ class DataframeActions:
             dataframe.columns = newColumnLabels
             return dataframe.set_index(dataframe.iloc[:, 0]).iloc[:, 1:]
 
-    def groupByRowIds(dataframe, rowIds, function=['sum']):
-        return DataframeActions.groupByColumnIds(dataframe.T, rowIds, function).T
-
     def joinFrames(dataframes, function='index'):
-        joinedFrame = None
-        for frame in dataframes:
-            joinedFrame = frame if joinedFrame is None else pandas.concat([joinedFrame, frame], axis=(1 if function == 'index' else 0), join='outer', verify_integrity=False, copy=True)
-        return joinedFrame
+      joinedFrame = None
+      for frame in dataframes:
+        joinedFrame = frame if joinedFrame is None else pandas.concat([joinedFrame, frame], axis=(1 if function == 'index' else 0), join='outer', verify_integrity=False, copy=True)
+      return joinedFrame
 
     def splitFramesByRowIdx(dataframes, rowIdx):
         newFrames = []
