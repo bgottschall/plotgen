@@ -40,7 +40,7 @@ import xopen
 import seaborn
 
 __prog__ = 'plotgen'
-__version__ = '0.6.6'
+__version__ = '0.6.7'
 __url__ = 'https://github.com/bgottschall/plotgen'
 
 
@@ -622,10 +622,10 @@ class DataframeActions:
             dataframe.columns = newColumnLabels
             return dataframe.set_index(dataframe.iloc[:, 0]).iloc[:, 1:]
 
-    def joinFrames(dataframes, function='index'):
+    def joinFrames(dataframes, function='index', how='outer'):
       joinedFrame = None
       for frame in dataframes:
-        joinedFrame = frame if joinedFrame is None else pandas.concat([joinedFrame, frame], axis=(1 if function == 'index' else 0), join='outer', verify_integrity=False, copy=True)
+        joinedFrame = frame if joinedFrame is None else pandas.concat([joinedFrame, frame], axis=(1 if function == 'index' else 0), join=how, verify_integrity=False, copy=True)
       return joinedFrame
 
     def splitFramesByRowIdx(dataframes, rowIdx):
@@ -803,7 +803,7 @@ parserFileOptions.add_argument("--drop-any-nan", help="drop rows/columns that co
 parserFileOptions.add_argument("--transpose", help="transpose rows and columns", default=False, sticky_default=True, nargs=0, sub_action="store_true", action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--print", help="print out all active frame", default=False, nargs=0, sub_action="store_true", action=ChildAction, parent=inputFileArgument)
 
-parserFileOptions.add_argument("--join", help="outer join input files on columns or index", default='index', choices=['index', 'columns'], sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--join", help="joins dataframes on columns or index by default with an outer join (e.g. --join index, --join columns inner)", default=['index', 'outer'], choices=['index', 'columns', 'outer', 'inner'], nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--split-icolumn", help="split frames into multiple frames along this column by index (or slice, or frame index)", type=str, sticky_default=True, choices=Range(None, None, ['index']), default=None, action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--split-column", help="split frames into mutiple frames along this column by name", type=str, sticky_default=True, default=None, action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--split-irow", help="split frames into multiple frames along this row by index (or slice, or frame columns)", type=str, sticky_default=True, choices=Range(None, None, ['columns']), default=None, action=ChildAction, parent=inputFileArgument)
@@ -1563,14 +1563,18 @@ for input in args.input:
             elif optionName == 'group_function':
                 groupFunction = optionValue
             elif optionName == 'join':
-                newOptions = copy.deepcopy(inputOptions)
-                newOptions.filenames = []
-                newOptions.frameCount = 1
-                frontDefocusedFrames = [inputFrames[x] for x in range(focusedFrames[0]) if x not in focusedFrames]
-                backDefocusedFrames = [inputFrames[x] for x in range(focusedFrames[0], len(inputFrames)) if x not in focusedFrames]
-                joinedFrame = DataframeActions.joinFrames([frame for (_, frame) in [inputFrames[x] for x in focusedFrames]], optionValue)
-                inputFrames = frontDefocusedFrames + [(newOptions, joinedFrame)] + backDefocusedFrames
-                focusedFrames = [len(frontDefocusedFrames)]
+              if optionValue[0] not in ['index', 'columns']:
+                raise 'ERROR: first parameter to join must be either \'index\' or \'columns\''
+              if len(optionValue) > 1 and optionValue[1] not in ['outer', 'inner']:
+                raise 'ERROR: second parameter to join must be either \'outer\' or \'inner\''
+              newOptions = copy.deepcopy(inputOptions)
+              newOptions.filenames = []
+              newOptions.frameCount = 1
+              frontDefocusedFrames = [inputFrames[x] for x in range(focusedFrames[0]) if x not in focusedFrames]
+              backDefocusedFrames = [inputFrames[x] for x in range(focusedFrames[0], len(inputFrames)) if x not in focusedFrames]
+              joinedFrame = DataframeActions.joinFrames([frame for (_, frame) in [inputFrames[x] for x in focusedFrames]], optionValue[0], 'outer' if len(optionValue) < 2 else optionValue[1])
+              inputFrames = frontDefocusedFrames + [(newOptions, joinedFrame)] + backDefocusedFrames
+              focusedFrames = [len(frontDefocusedFrames)]
             elif optionName == 'file':
                 DataframeActions.framesToCSV([frame for (_, frame) in [inputFrames[x] for x in focusedFrames]], optionValue, inputOptions.delimiter, args.quiet, outputPrecision)
                 doneSomething = True
