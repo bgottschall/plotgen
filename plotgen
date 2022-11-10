@@ -40,7 +40,7 @@ import xopen
 import seaborn
 
 __prog__ = 'plotgen'
-__version__ = '0.6.8'
+__version__ = '0.6.9'
 __url__ = 'https://github.com/bgottschall/plotgen'
 
 
@@ -523,12 +523,12 @@ class DataframeActions:
                         if len(mask) > 0:
                             dataframe.iloc[mask, columnId] = functionParams[-1]
                 elif functionName in ['rjust', 'ljust', 'cjust']:
-                    if len(functionParams) < 1:
-                        raise Exception(f'ERROR: function {functionName} at least 1 paramter')
-                    padWidth = functionParams[0]
+                    padWidth = functionParams[0] if len(functionParams) > 0  else None
                     padChar = str(functionParams[1]) if len(functionParams) > 1 else ' '
                     padFunc = functionName if functionName != 'cjust' else 'center'
-                    dataframe.iloc[:, applyColumnIds] = dataframe.iloc[:, applyColumnIds].applymap(lambda x: getattr(str(x), padFunc)(padWidth, padChar), 'ignore')
+                    dataframe.iloc[:, applyColumnIds] = dataframe.iloc[:, applyColumnIds].astype(str).apply(
+                      lambda s: s.apply(lambda v: getattr(v, padFunc)(max(s.str.len()) if padWidth is None else padWidth, padChar))
+                    )
                 elif functionName == 'polyfit':
                     try:
                         fitDim = 1 if len(functionParams) == 0 else int(functionParams[0])
