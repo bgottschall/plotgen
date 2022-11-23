@@ -40,7 +40,7 @@ import xopen
 import seaborn
 
 __prog__ = 'plotgen'
-__version__ = '0.6.9'
+__version__ = '0.7.0'
 __url__ = 'https://github.com/bgottschall/plotgen'
 
 
@@ -248,6 +248,40 @@ def updateRange(_range, dataList):
                 _range[index]['min'] = min(scope) if _range[index]['min'] is None else min(_range[index]['min'], min(scope))
                 _range[index]['max'] = max(scope) if _range[index]['max'] is None else max(_range[index]['max'], max(scope))
 
+# https://stackoverflow.com/questions/21844024/weighted-percentile-using-numpy
+def weightedQuantiles(values, quantiles, sampleWeight=None):
+  values = numpy.array(values)
+  quantiles = numpy.array(quantiles)
+  if sampleWeight is None:
+    sampleWeight = numpy.ones(len(values))
+  sampleWeight = numpy.array(sampleWeight)
+
+  valFilter = numpy.where(sampleWeight != 0)
+  values = values[valFilter]
+  sampleWeight = sampleWeight[valFilter]
+
+  if numpy.sum(sampleWeight) == 0:
+    return numpy.zeros(len(quantiles))
+
+  sorter = numpy.argsort(values)
+  values = values[sorter]
+  sampleWeight = sampleWeight[sorter]
+
+  weightedQuantiles = numpy.cumsum(sampleWeight) - 0.5 * sampleWeight
+  weightedQuantiles /= numpy.sum(sampleWeight)
+  return numpy.interp(quantiles, weightedQuantiles, values)
+
+# https://stackoverflow.com/questions/2413522/weighted-standard-deviation-in-numpy
+def weightedMeanStd(values, weights = None):
+  values = numpy.array(values)
+  if weights is None:
+    weights = numpy.ones(len(values))
+  weights = numpy.array(weights)
+  if numpy.sum(weights) == 0:
+    return (0, 0)
+  mean = numpy.average(values, weights=weights)
+  variance = numpy.average((values - mean)**2, weights=weights)
+  return (mean, numpy.sqrt(variance))
 
 class DataframeActions:
     functions = {
@@ -375,6 +409,9 @@ class DataframeActions:
 
     def resetIndex(dataframe):
         return dataframe.reset_index()
+
+    def resetColumns(dataframe):
+        return dataframe.T.reset_index().T
 
     def setIndexColumnByIdx(dataframe, colIdx):
         return dataframe.set_index(pandas.Index(dataframe.iloc[:, colIdx], name=dataframe.columns[colIdx]))
@@ -600,6 +637,13 @@ class DataframeActions:
         newCol.name = name
       return pandas.concat([dataframe, newCol], axis=1) if where == 'back' else pandas.concat([newCol, dataframe], axis=1)
 
+    def groupAllColumns(dataframe, columnName, function=['sum']):
+      return DataframeActions.groupAllRows(dataframe.T, columnName, function).T
+
+    def groupAllRows(dataframe, rowName, function=['sum']):
+      functionName = function[0]
+      return getattr(dataframe.apply(pandas.to_numeric, errors='coerce').groupby(lambda _: rowName), functionName)()
+
     def groupByRowIds(dataframe, rowIds, function=['sum']):
       rowIds = rowIds if isinstance(rowIds, list) else [rowIds]
       rowIds = ['index' if x == 'columns' else x for x in rowIds]
@@ -621,6 +665,53 @@ class DataframeActions:
                 raise Exception('Grouping dropped "nuisances" columns, and is considered not successful. This is probably due to incompatible data types in columns.')
             dataframe.columns = newColumnLabels
             return dataframe.set_index(dataframe.iloc[:, 0]).iloc[:, 1:]
+
+    def stackRowId(dataframe, rowId):
+      if rowId == 'columns':
+        l0Name = dataframe.index.name
+        dataframe = dataframe.T.set_index(dataframe.T.iloc[:, 0], append=True).T
+        dataframe = dataframe.iloc[1:, :].stack(0)
+        dataframe = dataframe.to_frame() if not isinstance(dataframe, pandas.DataFrame) else dataframe
+        dataframe = dataframe.reset_index()
+        dataframe = dataframe.set_index(dataframe.iloc[:, 0]).iloc[:, 1:]
+        dataframe.columns = ['columns'] + dataframe.columns.tolist()[1:]
+        dataframe.index.name = l0Name
+      else:
+        l0Name = dataframe.index.name
+        dataframe = dataframe.T.set_index(dataframe.T.iloc[:, rowId], append=True).T
+        dataframe = dataframe.iloc[1:, :].stack(1)
+        dataframe = dataframe.to_frame() if not isinstance(dataframe, pandas.DataFrame) else dataframe
+        dataframe = dataframe.reset_index()
+        dataframe = dataframe.set_index(dataframe.iloc[:, 0]).iloc[:, 1:]
+        dataframe.index.name = l0Name
+      return dataframe
+
+    def stackColumnId(dataframe, columnId):
+      return DataframeActions.stackRowId(dataframe.T, 'columns' if columnId == 'index' else columnId).T
+
+    def unstackRowId(dataframe, rowId):
+      return DataframeActions.unstackColumnId(dataframe.T, 'index' if rowId == 'columns' else rowId).T
+
+    def unstackColumnId(dataframe, columnId):
+      if columnId == 'index':
+        l0Name = dataframe.columns[0]
+        dataframe = dataframe.set_index(dataframe.iloc[:, 0], append=True).iloc[:, 1:]
+        dataframe = dataframe.unstack(0)
+        dataframe = dataframe.to_frame() if not isinstance(dataframe, pandas.DataFrame) else dataframe
+        dataframe = dataframe.T.reset_index()
+        dataframe = dataframe.set_index(dataframe.iloc[:, 0]).iloc[:, 1:].T
+        dataframe.index.name = l0Name
+        dataframe.columns.name = None
+      else:
+        l0Name = dataframe.index.name
+        dataframe = DataframeActions.dropColumnsByIds(dataframe.set_index(dataframe.iloc[:, columnId], append=True), [columnId])
+        dataframe = dataframe.unstack(1)
+        dataframe = dataframe.to_frame() if not isinstance(dataframe, pandas.DataFrame) else dataframe
+        dataframe = dataframe.T.reset_index()
+        dataframe = dataframe.set_index(dataframe.iloc[:, 0]).iloc[:, 1:].T
+        dataframe.index.name = l0Name
+        dataframe.columns.name = None
+      return dataframe
 
     def joinFrames(dataframes, function='index', how='outer'):
       joinedFrame = None
@@ -779,10 +870,23 @@ parserFileOptions.add_argument("--add-column", help="add a new column with name"
 parserFileOptions.add_argument("--add-row", help="add a new row with name", type=str, default=None, sticky_default=True, action=ChildAction, parent=inputFileArgument)
 
 parserFileOptions.add_argument("--group-function", help=f"use this function to group columns or rows (default '{DataframeActions.functions['soloComputeFunctions'][0]}')", type=str, default=[DataframeActions.functions['soloComputeFunctions'][0]], nargs='+', choices=DataframeActions.functions['soloComputeFunctions'], action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--group-by-icolumns", help="group by this column index (or slice, or frame index)", type=SliceType({'index': 'index', **defaultSliceTypeTranslator}), default=[], nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--group-by-columns", help="group by this column name", type=str, default=[], nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--group-by-irows", help="group by this row index (or slice, or frame columns)", type=SliceType({'columns': 'columns', **defaultSliceTypeTranslator}), default=[], nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--group-by-rows", help="group by this row name", type=str, default=[], nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--group-by-icolumns", help="group by these column indexes (or slice, or frame index)", type=SliceType({'index': 'index', **defaultSliceTypeTranslator}), default=[], nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--group-by-columns", help="group by these column names", type=str, default=[], nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--group-by-irows", help="group by these row indexes (or slice, or frame columns)", type=SliceType({'columns': 'columns', **defaultSliceTypeTranslator}), default=[], nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--group-by-rows", help="group by these row names", type=str, default=[], nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
+
+parserFileOptions.add_argument("--group-to-column", help="group all columns into a single one", type=str, default=None, sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--group-to-row", help="group all rows into a single one", type=str, default=None, sticky_default=True, action=ChildAction, parent=inputFileArgument)
+
+parserFileOptions.add_argument("--stack-icolumn", help="stack this column index (or slice, or frame index)", type=SliceType({'index': 'index', **defaultSliceTypeTranslator}), default=None, sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--stack-column", help="stack this column name", type=str, default=None, sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--stack-irow", help="stack this row index (or slice, or frame columns)", type=SliceType({'columns': 'columns', **defaultSliceTypeTranslator}), default=None, sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--stack-row", help="stack this row name", type=str, default=None, sticky_default=True, action=ChildAction, parent=inputFileArgument)
+
+parserFileOptions.add_argument("--unstack-icolumn", help="stack this column index (or slice, or frame index)", type=SliceType({'index': 'index', **defaultSliceTypeTranslator}), default=None, sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--unstack-column", help="stack this column name", type=str, default=None, sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--unstack-irow", help="stack this row index (or slice, or frame columns)", type=SliceType({'columns': 'columns', **defaultSliceTypeTranslator}), default=None, sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--unstack-row", help="stack this row name", type=str, default=None, sticky_default=True, action=ChildAction, parent=inputFileArgument)
 
 parserFileOptions.add_argument("--abs", help="convert all values to absolute values", type=str, default=False, nargs=0, sub_action="store_true", sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--apply-mode", help="apply function from first row or column argument on to the rest or in reverse (default %(default)s)", type=str, default='normal', choices=['normal', 'reverse'], action=ChildAction, parent=inputFileArgument)
@@ -829,6 +933,7 @@ parserPlotOptions.add_argument('--rowspan', type=int, choices=Range(1, None), he
 parserPlotOptions.add_argument('--col', type=int, choices=Range(1, None), help='subplot column (default %(default)s)', default=1, action=ChildAction, parent=inputFileArgument)
 parserPlotOptions.add_argument('--colspan', type=int, choices=Range(1, None), help='subplot columnspan (default %(default)s)', default=1, action=ChildAction, parent=inputFileArgument)
 
+parserPlotOptions.add_argument("--category", help="how are category axis shown", default='normal', choices=['none', 'normal', 'reversed'], action=ChildAction, parent=inputFileArgument)
 parserPlotOptions.add_argument("--error", help="show error markers in plot (need to be supplied by data)", default='hide', choices=['show', 'hide'], action=ChildAction, parent=inputFileArgument)
 parserPlotOptions.add_argument("--trace-names", help="set individual trace names", default=[], sticky_default=True, type=escapedStr, nargs='+', action=ChildAction, parent=inputFileArgument)
 parserPlotOptions.add_argument("--trace-colours", help="define explicit trace colours", default=[], nargs='+', type=escapedStr, sticky_default=True, action=ChildAction, parent=inputFileArgument)
@@ -837,7 +942,7 @@ parserPlotOptions.add_argument("--line-colour", help="set line colour  (default 
 parserPlotOptions.add_argument("--opacity", help="colour opacity (default 0.8 for overlay modes, else 1.0)", choices=Range(0, 1, ['auto']), action=ChildAction, parent=inputFileArgument)
 parserPlotOptions.add_argument("--offsetgroups", help="set explicit offsetgroups for e.g. bar charts", type=int, default='auto', nargs='+', choices=Range(0, None, ['auto']), sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserPlotOptions.add_argument("--legend-entries", help="choose which entries are shown in legend", choices=['all', 'unique', 'none'], default=None, action=ChildAction, parent=inputFileArgument)
-parserPlotOptions.add_argument("--distribution-mode", help="define whether the input data is parsed as binned or aggregated data (e.g. histogramm data) for appropriate plots (box and violin)", type=str, choices=['normal', 'aggregated'], default='normal', action=ChildAction, parent=inputFileArgument)
+parserPlotOptions.add_argument("--distribution-mode", help="define whether the input data is parsed as binned or aggregated data (e.g. histogramm data) for appropriate plots (box and violin)", type=str, choices=['normal', 'aggregated', 'raggregated'], default='normal', action=ChildAction, parent=inputFileArgument)
 parserPlotOptions.add_argument("--distribution-scale", help="scale data points to this number in distribution mode aggregated (default %(default)s)", type=float, choices=Range(0, None), default=0, action=ChildAction, parent=inputFileArgument)
 
 parserLinePlotOptions = parser.add_argument_group('line plot options')
@@ -870,6 +975,8 @@ parserViolinPlotOptions.add_argument("--violin-group-gap", help="gap between vio
 
 parserBoxPlotOptions = parser.add_argument_group('box plot options')
 parserBoxPlotOptions.add_argument("--box-mode", choices=['overlay', 'group'], help="choose boxmode (default %(default)s)", default='overlay')
+parserBoxPlotOptions.add_argument("--box-whisker", help="choose what the box whisker are representing in precomputed box types (e.g. iqr, minmax or p99 to p76 - percentiles, default %(default)s)", default='minmax', type=str, action=ChildAction, parent=inputFileArgument)
+parserBoxPlotOptions.add_argument("--box-type", choices=['raw', 'precomputed'], help="choose whether to precompute boxes or to include all raw values (default %(default)s)", default='precomputed', action=ChildAction, parent=inputFileArgument)
 parserBoxPlotOptions.add_argument("--box-mean", choices=['none', 'line', 'dot'], help="choose box mean (default %(default)s)", default='dot', action=ChildAction, parent=inputFileArgument)
 parserBoxPlotOptions.add_argument("--box-width", help="box width (default %(default)s)", type=float, default=0, choices=Range(0,), action=ChildAction, parent=inputFileArgument)
 parserBoxPlotOptions.add_argument("--box-gap", help="gap between boxes (default %(default)s) (not compatible with box-width)", type=float, default=0.3, choices=Range(0, 1))
@@ -1062,9 +1169,6 @@ for input in args.input:
     options.y_line_width_forced = 'y_line_width' in [i for (i, _) in options.ordered_args]
     options.x_line_width_forced = 'x_line_width' in [i for (i, _) in options.ordered_args]
 
-    options.y_autorange = "True" if options.y_autorange == 'on' else "False" if options.y_autorange == 'off' else f"'{options.y_autorange}'"
-    options.x_autorange = "True" if options.x_autorange == 'on' else "False" if options.x_autorange == 'off' else f"'{options.x_autorange}'"
-
     options.y_range_from = None if options.y_range_from == 'auto' else float(options.y_range_from)
     options.x_range_from = None if options.x_range_from == 'auto' else float(options.x_range_from)
     options.y_range_to = None if options.y_range_to == 'auto' else float(options.y_range_to)
@@ -1074,11 +1178,15 @@ for input in args.input:
     options.y_tickangle = None if options.y_tickangle == 'auto' else float(options.y_tickangle)
     options.x_tickangle = None if options.x_tickangle == 'auto' else float(options.x_tickangle)
 
+    options.y_autorange = f"'{options.y_autorange}'" if options.y_autorange not in ['on', 'off'] else 'False' if options.y_autorange == 'off' or options.y_range_to is not None or options.y_range_from is not None else 'True'
+    options.x_autorange = f"'{options.y_autorange}'" if options.x_autorange not in ['on', 'off'] else 'False' if options.x_autorange == 'off' or options.x_range_to is not None or options.x_range_from is not None else 'True'
+
     if options.legend_entries is None:
         if args.theme != 'palette':
             options.legend_entries = 'all'
         else:
             options.legend_entries = 'unique'
+
 
     if options.plot != 'line':
         # If explicitly set the range-to the automatic ranging would start at the
@@ -1309,7 +1417,7 @@ for input in args.input:
                 elif optionName == 'reset_index':
                     frame = DataframeActions.resetIndex(frame)
                 elif optionName == 'reset_columns':
-                    frame = DataframeActions.resetIndex(frame.T).T
+                    frame = DataframeActions.resetColumns(frame)
                 elif optionName == 'ignore_columns':
                     columnIds = DataframeActions.getColumnIds(frame, optionValue, selectMode, True)
                     frame = DataframeActions.dropColumnsByIds(frame, columnIds)
@@ -1390,20 +1498,22 @@ for input in args.input:
                     frame = DataframeActions.sortRows(frame, sortFunction, sortOrder)
                 elif optionName == 'sort_by_icolumns':
                     if 'index' in optionValue:
-                        if (len(optionValue) > 1 and not args.quiet):
-                            print('WARNING: cannot combine sorting after index with other columns', file=sys.stderr)
-                        frame = DataframeActions.sortRowsByColumnIds(frame, 'index', sortFunction, sortOrder)
+                      columnIds = [v for lv in [[0] if ov == 'index' else [x + 1 for x in DataframeActions.sliceToColumnIds(frame, ov)] for ov in optionValue] for v in lv]
+                      frame = DataframeActions.resetIndex(frame)
                     else:
-                        columnIds = DataframeActions.sliceToColumnIds(frame, optionValue)
-                        frame = DataframeActions.sortRowsByColumnIds(frame, columnIds, sortFunction, sortOrder)
+                      columnIds = DataframeActions.sliceToColumnIds(frame, optionValue)
+                    frame = DataframeActions.sortRowsByColumnIds(frame, columnIds, sortFunction, sortOrder)
+                    if 'index' in optionValue:
+                      frame = DataframeActions.dropColumnsByIds(DataframeActions.setIndexColumnByIdx(frame, 0), [0])
                 elif optionName == 'sort_by_irows':
                     if 'columns' in optionValue:
-                        if (len(optionValue) > 1 and not args.quiet):
-                            print('WARNING: cannot combine sorting after columns with other rows', file=sys.stderr)
-                        frame = DataframeActions.sortColumnsByRowIds(frame, 'columns', sortFunction, sortOrder)
+                      rowIds = [v for lv in [[0] if ov == 'columns' else [x + 1 for x in DataframeActions.sliceToRowIds(frame, ov)] for ov in optionValue] for v in lv]
+                      frame = DataframeActions.resetColumns(frame)
                     else:
-                        rowIds = DataframeActions.sliceToRowIds(frame, optionValue)
-                        frame = DataframeActions.sortColumnsByRowIds(frame, rowIds, sortFunction, sortOrder)
+                      rowIds = DataframeActions.sliceToRowIds(frame, optionValue)
+                    frame = DataframeActions.sortColumnsByRowIds(frame, rowIds, sortFunction, sortOrder)
+                    if 'columns' in optionValue:
+                      frame = DataframeActions.dropColumnsByIds(DataframeActions.setIndexColumnByIdx(frame.T, 0), [0]).T
                 elif optionName == 'sort_by_columns':
                     columnIds = DataframeActions.getColumnIds(frame, optionValue, selectMode)
                     frame = DataframeActions.sortRowsByColumnIds(frame, columnIds, sortFunction, sortOrder)
@@ -1419,28 +1529,28 @@ for input in args.input:
                 elif optionName == 'normalise_to_column':
                     applyColumnIds = DataframeActions.getColumnIds(frame, optionValue, selectMode)
                     if len(applyColumnIds) > 1 and not args.quiet:
-                        print('WARNING:', file=sys.stderr)
+                        print('WARNING: will only normalise to the first column selected', file=sys.stderr)
                     targetColumnIds = DataframeActions.sliceToColumnIds(frame, slice(None))
                     if len(applyColumnIds) > 0 and len(targetColumnIds) > 0:
                         frame = DataframeActions.applyOnColumns(frame, applyColumnIds[0], targetColumnIds, ['div'])
                 elif optionName == 'normalise_to_icolumn':
                     applyColumnIds = DataframeActions.sliceToColumnIds(frame, optionValue)
                     if (len(applyColumnIds) > 1 and not args.quiet):
-                        print('WARNING: can only normalise to a single column', file=sys.stderr)
+                        print('WARNING: will only normalise to the first single column', file=sys.stderr)
                     targetColumnIds = DataframeActions.sliceToColumnIds(frame, slice(None))
                     if len(applyColumnIds) > 0 and len(targetColumnIds) > 0:
                         frame = DataframeActions.applyOnColumns(frame, applyColumnIds[0], targetColumnIds, ['div'])
                 elif optionName == 'normalise_to_row':
                     applyRowIds = DataframeActions.getRowIds(frame, optionValue, selectMode)
                     if len(applyRowIds) > 1 and not args.quiet:
-                        print('WARNING:', file=sys.stderr)
+                        print('WARNING: will only normalise to the first row selected', file=sys.stderr)
                     targetRowIds = DataframeActions.sliceToRowIds(frame, slice(None))
                     if len(applyRowIds) > 0 and len(targetRowIds) > 0:
                         frame = DataframeActions.applyOnRows(frame, applyRowIds[0], targetRowIds, ['div'])
                 elif optionName == 'normalise_to_irow':
                     applyRowIds = DataframeActions.sliceToRowIds(frame, optionValue)
                     if (len(applyRowIds) > 1 and not args.quiet):
-                        print('WARNING: can only normalise to a single row', file=sys.stderr)
+                        print('WARNING: will only normalise to the first row selected', file=sys.stderr)
                     targetRowIds = DataframeActions.sliceToRowIds(frame, slice(None))
                     if len(applyRowIds) > 0 and len(targetRowIds) > 0:
                         frame = DataframeActions.applyOnRows(frame, applyRowIds[0], targetRowIds, ['div'])
@@ -1464,26 +1574,58 @@ for input in args.input:
                     frame = DataframeActions.applyOnColumns(frame, applyColumnIds, targetColumnIds, applyFunction, applyMode)
                 elif optionName == 'group_by_irows':
                     if 'columns' in optionValue:
-                        if (len(optionValue) > 1 and not args.quiet):
-                            print('WARNING: cannot combine grouping after columns with other rows', file=sys.stderr)
-                        frame = DataframeActions.groupByRowIds(frame, 'columns', groupFunction)
+                      rowIds = [0] + [x + 1 for x in DataframeActions.sliceToRowIds(frame, [x for x in optionValue if x != 'columns'])]
+                      frame = DataframeActions.resetColumns(frame)
                     else:
-                        rowIds = DataframeActions.sliceToRowIds(frame, optionValue)
-                        frame = DataframeActions.groupByRowIds(frame, rowIds, groupFunction)
+                      rowIds = DataframeActions.sliceToRowIds(frame, optionValue)
+                    frame = DataframeActions.groupByRowIds(frame, rowIds, groupFunction)
                 elif optionName == 'group_by_icolumns':
                     if 'index' in optionValue:
-                        if (len(optionValue) > 1 and not args.quiet):
-                            print('WARNING: cannot combine grouping after index with other columns', file=sys.stderr)
-                        frame = DataframeActions.groupByColumnIds(frame, 'index', groupFunction)
+                      columnIds = [0] + [x + 1 for x in DataframeActions.sliceToColumnIds(frame, [x for x in optionValue if x != 'index'])]
+                      frame = DataframeActions.resetIndex(frame)
                     else:
-                        columnIds = DataframeActions.sliceToColumnIds(frame, optionValue)
-                        frame = DataframeActions.groupByColumnIds(frame, columnIds, groupFunction)
+                      columnIds = DataframeActions.sliceToColumnIds(frame, optionValue)
+                    frame = DataframeActions.groupByColumnIds(frame, columnIds, groupFunction)
                 elif optionName == 'group_by_rows':
                     rowIds = DataframeActions.getRowIds(frame, optionValue, selectMode)
                     frame = DataframeActions.groupByRowIds(frame, rowIds, groupFunction)
                 elif optionName == 'group_by_columns':
                     columnIds = DataframeActions.getColumnIds(frame, optionValue, selectMode)
                     frame = DataframeActions.groupByColumnIds(frame, columnIds, groupFunction)
+                elif optionName == 'group_to_column':
+                  frame = DataframeActions.groupAllColumns(frame, optionValue, groupFunction)
+                elif optionName == 'group_to_row':
+                    frame = DataframeActions.groupAllRows(frame, optionValue, groupFunction)
+                elif optionName in ['stack_irow', 'stack_row', 'unstack_irow', 'unstack_row']:
+                  if optionName.endswith('irow'):
+                    rowIds = ['columns'] if optionValue == 'columns' else DataframeActions.sliceToRowIds(frame, optionValue)
+                  else:
+                    rowIds = DataframeActions.getRowIds(frame, optionValue, selectMode)
+                  if len(rowIds) > 1 and not args.quiet:
+                    print(f"WARNING: will only {optionName.split('_')[0]} first row selected", file=sys.stderr)
+                  if len(rowIds) == 0:
+                    if not args.quiet:
+                      print(f"WARNING: could not find row'{optionValue}' to {optionName.split('_')[0]}", file=sys.stderr)
+                  else:
+                    if optionName.startswith('stack'):
+                      frame = DataframeActions.stackRowId(frame, rowIds[0])
+                    else:
+                      frame = DataframeActions.unstackRowId(frame, rowIds[0])
+                elif optionName in ['stack_icolumn', 'stack_column', 'unstack_icolumn', 'unstack_column']:
+                  if optionName.endswith('icolumn'):
+                    columnIds = ['index'] if optionValue == 'index' else DataframeActions.sliceToColumnIds(frame, optionValue)
+                  else:
+                    columnIds = DataframeActions.getColumnIds(frame, optionValue, selectMode)
+                  if len(columnIds) > 1 and not args.quiet:
+                    print(f"WARNING: will only {optionName.split('_')[0]} first column selected", file=sys.stderr)
+                  if len(columnIds) == 0:
+                    if not args.quiet:
+                      print(f"WARNING: could not find column'{optionValue}' to {optionName.split('_')[0]}", file=sys.stderr)
+                  else:
+                    if optionName.startswith('stack'):
+                      frame = DataframeActions.stackColumnId(frame, columnIds[0])
+                    else:
+                      frame = DataframeActions.unstackColumnId(frame, columnIds[0])
                 elif optionName == 'add_column':
                     frame = DataframeActions.addColumn(frame, optionValue, addFunction, addAt)
                 elif optionName == 'add_row':
@@ -1497,7 +1639,7 @@ for input in args.input:
                 elif optionName == 'icolumn_names':
                     if not isSliceType(optionValue[0]):
                         if not args.quiet:
-                            print('WARNING: invalid index or slice provided to --icolumn-names', file=sys.stderr)
+                            print(f'WARNING: invalid index or slice provided to {optionName}', file=sys.stderr)
                     if len(optionValue) > 1:
                         columnIds = DataframeActions.sliceToColumnIds(frame, SliceType()(optionValue[0]))
                         frame = DataframeActions.renameColumns(frame, columnIds, optionValue[1:])
@@ -1506,7 +1648,7 @@ for input in args.input:
                 elif optionName == 'irow_names':
                     if not isSliceType(optionValue[0]):
                         if not args.quiet:
-                            print('WARNING: invalid index or slice provided to --irow-names', file=sys.stderr)
+                            print(f'WARNING: invalid index or slice provided to {optionName}', file=sys.stderr)
                     if len(optionValue) > 1:
                         rowIds = DataframeActions.sliceToRowIds(frame, SliceType()(optionValue[0]))
                         frame = DataframeActions.renameRows(frame, rowIds, optionValue[1:])
@@ -1844,8 +1986,35 @@ for input in data:
     multiCategory = False
 
     if options.traceCount == 0:
-        print(f"WARNING: frame {inputFrameIndex} from input files {', '.join(options.filenames)} has no traces")
-        continue
+      print(f"WARNING: frame {inputFrameIndex} from input files {', '.join(options.filenames)} has no traces")
+      continue
+
+    if options.plot not in ['violin', 'box'] and options.distribution_mode in ['aggregated', 'raggregated']:
+      if not args.quiet:
+        print(f"WARNING: distribution mode has no effect on plot type '{options.plot}'", file=sys.stderr)
+      options.distribution_mode = 'normal'
+
+    if options.plot == 'box' and options.box_whisker not in ['minmax', 'maxmin'] and options.box_type == 'raw':
+      if not args.quiet:
+        print(f"WARNING: box whisker can only be chosen in precomputed box types", file=sys.stderr)
+      options.box_whisker = 'minmax'
+
+    if options.plot == 'box' and options.box_type == 'precomputed':
+      whiskersCorrect = False
+      if options.box_whisker.startswith('p'):
+        if whiskersCorrect := isFloat(options.box_whisker[1:]) and 75.0 < float(options.box_whisker[1:]) <= 100.0:
+          options.box_whisker = float(options.box_whisker[1:]) / 100.0
+      elif options.box_whisker.startswith('iqr'):
+        whiskersCorrect = len(options.box_whisker) == 3 or (isFloat(options.box_whisker[3:]) and 0 < float(options.box_whisker[3:]))
+      else:
+        whiskersCorrect = options.box_whiskers in ['minmax', 'maxmin', 'none']
+      if not whiskersCorrect:
+          raise Exception(f"ERROR: unknown box whisker mode '{options.box_whisker}'")
+
+    if options.plot == 'box' and options.distribution_mode in ['aggregated', 'raggregated'] and options.distribution_scale > 0 and not options.box_type == 'precomputed':
+      if not args.quiet:
+        print(f"WARNING: switching to precomputed box type for accurate statistics in distribution scaling", file=sys.stderr)
+      options.box_type = 'precomputed'
 
     for frame in frames:
         # NaN cannot be plotted or used, cast it to None
@@ -1856,37 +2025,36 @@ for input in data:
         frameTraceIndex = 0
 
         expandDistribution = None
-        if options.distribution_mode == 'aggregated':
-            if options.plot in ['violin', 'box']:
-                if not all(frame.index.map(isFloat)):
-                    if not args.quiet:
-                        print(f"WARNING: cannot expand distribution for non numeric index in frame {inputFrameIndex}", file=sys.stderr)
-                else:
-                    expandDistribution = frame.index.map(float).to_list()
-            else:
-                if not args.quiet:
-                    print(f"WARNING: distribution mode aggregated has no effect on plot type '{options.plot}' in frame {inputFrameIndex}", file=sys.stderr)
+        if options.distribution_mode in ['aggregated', 'raggregated']:
+          if options.plot in ['violin', 'box']:
+            if all(frame.index.map(isFloat)):
+              expandDistribution = frame.index.map(float).to_list()
+            elif not args.quiet:
+              print(f"WARNING: cannot expand distribution for non numeric index in frame {inputFrameIndex}", file=sys.stderr)
+          else:
+            if not args.quiet:
+              print(f"WARNING: distribution mode has no effect on plot type '{options.plot}' in frame {inputFrameIndex}", file=sys.stderr)
 
         _categories = None
         for specialFrameColumn in options.frameSpecialColumns:
-            if specialFrameColumn not in frame.columns:
-                continue
-            for colIndex in range(len(frame.columns)):
-                colName = str(frame.columns[colIndex])
-                if (colName == options.special_column_prefix + 'category') and _categories is None:
-                    _categories = ['' if x is None else x for x in frame.iloc[:, colIndex].values.tolist()]
+          if specialFrameColumn not in frame.columns:
+            continue
+          for colIndex in range(len(frame.columns)):
+            colName = str(frame.columns[colIndex])
+            if (colName == options.special_column_prefix + 'category') and _categories is None:
+              _categories = ['' if x is None else x for x in frame.iloc[:, colIndex].values.tolist()]
 
         if options.plot not in ['heatmap']:
             for colIndex, _ in enumerate(frame.columns):
                 col = str(frame.columns[colIndex])
                 if col in options.traceSpecialColumns or col in options.frameSpecialColumns:
-                    continue
+                  continue
 
                 if options.trace_colours and frameTraceIndex < len(options.trace_colours):
-                    fillcolour = options.trace_colours[frameTraceIndex]
+                  fillcolour = options.trace_colours[frameTraceIndex]
                 else:
-                    colourIndex = (subplot['palette_index'] if subplot['palette_local'] else globalPaletteIndex) % len(subplot['colours'])
-                    fillcolour = subplot['colours'][colourIndex]
+                  colourIndex = (subplot['palette_index'] if subplot['palette_local'] else globalPaletteIndex) % len(subplot['colours'])
+                  fillcolour = subplot['colours'][colourIndex]
                 markercolour = options.line_colour
 
                 _errors_symmetric = True
@@ -1895,68 +2063,122 @@ for input in data:
                 _bases = None
                 _labels = None
                 _colours = None
+
                 for nextColIndex in range(colIndex + 1, colIndex + 1 + len(options.traceSpecialColumns) if colIndex + 1 + len(options.traceSpecialColumns) <= len(frame.columns) else len(frame.columns)):
-                    nextCol = str(frame.columns[nextColIndex])
-                    if (nextCol not in options.traceSpecialColumns):
-                        break
-                    if (nextCol == options.special_column_prefix + 'error') and (_errors_pos is None):
-                        _errors_pos = [x if (x is not None) else 0 for x in frame.iloc[:, nextColIndex].values.tolist()]
-                    elif (nextCol == options.special_column_prefix + 'error+') and (_errors_pos is None):
-                        _errors_symmetric = False
-                        _errors_pos = [x if (x is not None) else 0 for x in frame.iloc[:, nextColIndex].values.tolist()]
-                    elif (nextCol == options.special_column_prefix + 'error-') and (_errors_neg is None):
-                        _errors_symmetric = False
-                        _errors_neg = [x if (x is not None) else 0 for x in frame.iloc[:, nextColIndex].values.tolist()]
-                    elif (nextCol == options.special_column_prefix + 'offset') and (_bases is None):
-                        _bases = [x if (x is not None) else 0 for x in frame.iloc[:, nextColIndex].values.tolist()]
-                    elif (nextCol == options.special_column_prefix + 'label') and (_labels is None):
-                        _labels = frame.iloc[:, nextColIndex].values.tolist()
-                    elif (nextCol == options.special_column_prefix + 'colour') and (_colours is None) and (frameTraceIndex >= len(options.trace_colours)):
-                        _colours = frame.iloc[:, nextColIndex].values.tolist()
-                        _colours = [c if c is not None else fillcolour for c in _colours]
+                  nextCol = str(frame.columns[nextColIndex])
+                  if (nextCol not in options.traceSpecialColumns):
+                    break
+                  if (nextCol == options.special_column_prefix + 'error') and (_errors_pos is None):
+                    _errors_pos = [x if (x is not None) else 0 for x in frame.iloc[:, nextColIndex].values.tolist()]
+                  elif (nextCol == options.special_column_prefix + 'error+') and (_errors_pos is None):
+                    _errors_symmetric = False
+                    _errors_pos = [x if (x is not None) else 0 for x in frame.iloc[:, nextColIndex].values.tolist()]
+                  elif (nextCol == options.special_column_prefix + 'error-') and (_errors_neg is None):
+                    _errors_symmetric = False
+                    _errors_neg = [x if (x is not None) else 0 for x in frame.iloc[:, nextColIndex].values.tolist()]
+                  elif (nextCol == options.special_column_prefix + 'offset') and (_bases is None):
+                    _bases = [x if (x is not None) else 0 for x in frame.iloc[:, nextColIndex].values.tolist()]
+                  elif (nextCol == options.special_column_prefix + 'label') and (_labels is None):
+                    _labels = frame.iloc[:, nextColIndex].values.tolist()
+                  elif (nextCol == options.special_column_prefix + 'colour') and (_colours is None) and (frameTraceIndex >= len(options.trace_colours)):
+                    _colours = frame.iloc[:, nextColIndex].values.tolist()
+                    _colours = [c if c is not None else fillcolour for c in _colours]
+
+                traceName = col
+                if (inputTraceIndex < len(options.trace_names)):
+                    traceName = options.trace_names[inputTraceIndex]
+                elif (options.use_name is not None):
+                    traceName = options.use_name
+                elif (traceIndex < len(args.global_trace_names)):
+                    traceName = args.global_trace_names[traceIndex]
+
+                showInLegend = options.legend_entries == 'all'
 
                 if (options.plot == 'line'):
-                    ydata = frame.iloc[:, colIndex].values.tolist() if not options.vertical else list(frame.index)
-                    xdata = frame.iloc[:, colIndex].values.tolist() if options.vertical else list(frame.index)
-                    updateRange(plotRange, [xdata, ydata])
+                  ydata = frame.iloc[:, colIndex].values.tolist() if not options.vertical else list(frame.index)
+                  xdata = frame.iloc[:, colIndex].values.tolist() if options.vertical else list(frame.index)
+                  updateRange(plotRange, [xdata, ydata])
                 elif (options.plot == 'bar'):
-                    ydata = frame.iloc[:, colIndex].tolist() if options.vertical else list(frame.index)
-                    xdata = frame.iloc[:, colIndex].tolist() if not options.vertical else list(frame.index)
-                    if _bases is not None:
-                        rxdata = xdata
-                        rydata = ydata
-                        if (options.horizontal):
-                            rxdata = [a + b if (a is not None and b is not None) else a if a is not None else b for a, b in zip(xdata, _bases)]
-                        else:
-                            rydata = [a + b if (a is not None and b is not None) else a if a is not None else b for a, b in zip(ydata, _bases)]
-                        updateRange(plotRange, [rxdata, rydata])
+                  ydata = frame.iloc[:, colIndex].tolist() if options.vertical else list(frame.index)
+                  xdata = frame.iloc[:, colIndex].tolist() if not options.vertical else list(frame.index)
+                  if _bases is not None:
+                    rxdata = xdata
+                    rydata = ydata
+                    if (options.horizontal):
+                      rxdata = [a + b if (a is not None and b is not None) else a if a is not None else b for a, b in zip(xdata, _bases)]
                     else:
-                        updateRange(plotRange, [xdata, ydata])
-                    if _categories is not None:
-                        multiCategory = True
-                        if options.horizontal:
-                            ydata = [_categories, ydata]
-                        else:
-                            xdata = [_categories, xdata]
+                      rydata = [a + b if (a is not None and b is not None) else a if a is not None else b for a, b in zip(ydata, _bases)]
+                    updateRange(plotRange, [rxdata, rydata])
+                  else:
+                    updateRange(plotRange, [xdata, ydata])
                 else:  # Box and Violin
                     rawData = frame.iloc[:, colIndex].values
                     if all(x is None for x in rawData):
-                        if not args.quiet:
-                            print(f"WARNING: no data or only NaN found at column {colIndex} of frame '{inputFrameIndex}'", file=sys.stderr)
-                        rawData[0] = 0
+                      if not args.quiet:
+                        print(f"WARNING: no data or only NaN found at column {colIndex} of frame '{inputFrameIndex}'", file=sys.stderr)
+                      rawData[0] = 0
 
+                    precomputeStats = options.plot == 'box' and options.box_type == 'precomputed'
+                    precomputeQ1 = None
+                    precomputeQ2 = None
+                    precomputeQ3 = None
+                    precomputeStd = None
+                    precomputeMean = None
+                    precomputeLF = None
+                    precomputeUF = None
+
+                    localExpand = None
                     data = [x for x in rawData if x is not None]
-                    if expandDistribution is not None:
+
+                    if expandDistribution is not None and options.distribution_mode in ['aggregated', 'raggregated']:
+                      localExpand = [x for (x, y) in zip(expandDistribution, rawData) if y is not None]
+
+                    if not precomputeStats and localExpand is not None:
+                      if options.distribution_scale > 0:
                         maxData = max(data)
-                        localExpand = [x for (x, y) in zip(expandDistribution, rawData) if y is not None]
-                        if options.distribution_scale > 0:
-                            data = [(options.distribution_scale / maxData) * x for x in data]
-                        # Expansion is using ceiling to avoid dropping of data points. Side effect is that it might lift the distribution a little bit up
-                        data = list(numpy.repeat(localExpand, numpy.ceil(data).astype(numpy.int64)))
-                    index = None
-                    ydata = index if not options.vertical else data
-                    xdata = index if options.vertical else data
-                    updateRange(plotRange, [xdata, ydata])
+                        data = [(options.distribution_scale / maxData) * x for x in data]
+                      data = numpy.floor(data).astype(numpy.int64)
+
+                    if localExpand is not None and options.distribution_mode == 'raggregated':
+                        data, localExpand = localExpand, data
+
+                    if precomputeStats:
+                      reqUfP = 0.0 if not isFloat(options.box_whisker) else options.box_whisker
+                      reqLfP = 1.0 - reqUfP
+
+                      lfP, precomputeQ1, precomputeQ2, precomputeQ3, ufP = weightedQuantiles(data, [reqLfP, 0.25, 0.5, 0.75, reqUfP], localExpand)
+                      precomputeMean, precomputeStd = weightedMeanStd(data, localExpand)
+                      if isFloat(options.box_whisker):
+                        precomputeLF = lfP
+                        precomputeUF = ufP
+                      elif options.box_whisker.startswith('iqr'):
+                        iqrFactor = float(options.box_whisker[3:]) if len(options.box_whisker) > 3 and isFloat(options.box_whisker[3:]) else 1.5
+                        precomputeLF = precomputeQ1 - (iqrFactor * (precomputeQ3 - precomputeQ1))
+                        precomputeUF = precomputeQ3 + (iqrFactor * (precomputeQ3 - precomputeQ1))
+                      elif options.box_whisker in ['minmax', 'maxmin']:
+                        precomputeLF = min(data) if localExpand is None else 0 if sum(localExpand) == 0 else min(x for x, w in zip(data, localExpand) if w != 0)
+                        precomputeUF = max(data) if localExpand is None else 0 if sum(localExpand) == 0 else max(x for x, w in zip(data, localExpand) if w != 0)
+                      else:
+                        precomputeLF = None
+                        precomputeUF = None
+
+                    if not precomputeStats and localExpand is not None:
+                      # Expansion is using floor to avoid artificially lifting a dsitribution
+                      # this way the scaling factor corresponds to including the percentile of values
+                      # distribution_scale of 1000 would be the 99.9th percentile
+                      data = list(numpy.repeat(data, localExpand))
+
+                    if precomputeStats:
+                      ydata = [traceName] if not options.vertical else None
+                      xdata = [traceName] if options.vertical else None
+                      stats = [precomputeQ1, precomputeQ2, precomputeQ3, precomputeStd, precomputeLF, precomputeUF, precomputeMean]
+                      updateRange(plotRange, [None, stats] if options.vertical else [stats, None])
+                    else:
+                      index = None
+                      ydata = index if not options.vertical else data
+                      xdata = index if options.vertical else data
+                      dotMean = None if len(data) == 0 else numpy.mean(data)
+                      updateRange(plotRange, [xdata, ydata])
 
                 if options.offsetgroups == 'auto':
                     offsetgroup = options.subplotTraceIndex + inputFrameIndex + frameTraceIndex + 1 if args.bar_mode == 'group' else None
@@ -1966,16 +2188,12 @@ for input in data:
                     else:
                         offsetgroup = options.offsetgroups[-1]
 
-                traceName = col
+                if options.category != 'none' and _categories is not None:
+                  if options.horizontal and options.plot != 'line':
+                    ydata = [_categories, ydata] if options.category == 'normal' else [ydata, _categories]
+                  else:
+                    xdata = [_categories, xdata] if options.category == 'normal' else [xdata, _categories]
 
-                if (inputTraceIndex < len(options.trace_names)):
-                    traceName = options.trace_names[inputTraceIndex]
-                elif (options.use_name is not None):
-                    traceName = options.use_name
-                elif (traceIndex < len(args.global_trace_names)):
-                    traceName = args.global_trace_names[traceIndex]
-
-                showInLegend = options.legend_entries == 'all'
                 if traceName not in legendEntries:
                     if options.legend_entries == 'unique':
                         showInLegend = True
@@ -2077,6 +2295,13 @@ fig.add_trace(go.Box(
     showlegend={showInLegend},
     y={ydata},
     x={xdata},
+    q1={None if precomputeQ1 is None else [precomputeQ1]},
+    median={None if precomputeQ2 is None else [precomputeQ2]},
+    q3={None if precomputeQ3 is None else [precomputeQ3]},
+    mean={None if precomputeMean is None else [precomputeMean]},
+    sd={None if precomputeStd is None else [precomputeStd]},
+    upperfence={None if precomputeUF is None else [precomputeUF]},
+    lowerfence={None if precomputeLF is None else [precomputeLF]},
     boxpoints=False,
     boxmean={True if options.box_mean == 'line' else False},
     width={options.box_width},
@@ -2094,8 +2319,8 @@ fig.add_trace(go.Scatter(
     name='mean_{traceName}',
     legendgroup='{traceName}',
     showlegend=False,
-    y={[traceName] if not options.vertical else [numpy.mean([float(y) for y in ydata if isFloat(y)])]},
-    x={[traceName] if options.vertical else [numpy.mean([float(x) for x in xdata if isFloat(x)])]},
+    y={[traceName] if not options.vertical else [precomputeMean] if precomputeMean is not None else [dotMean]},
+    x={[traceName] if options.vertical else [precomputeMean] if precomputeMean is not None else [dotMean]},
 {commentColour}    fillcolor='{fillcolour}',
 {commentColour}    line_color='{markercolour}',
     line_width={options.line_width},
