@@ -40,7 +40,7 @@ import xopen
 import seaborn
 
 __prog__ = 'plotgen'
-__version__ = '0.7.0'
+__version__ = '0.7.1'
 __url__ = 'https://github.com/bgottschall/plotgen'
 
 
@@ -2007,7 +2007,7 @@ for input in data:
       elif options.box_whisker.startswith('iqr'):
         whiskersCorrect = len(options.box_whisker) == 3 or (isFloat(options.box_whisker[3:]) and 0 < float(options.box_whisker[3:]))
       else:
-        whiskersCorrect = options.box_whiskers in ['minmax', 'maxmin', 'none']
+        whiskersCorrect = options.box_whisker in ['minmax', 'maxmin', 'none']
       if not whiskersCorrect:
           raise Exception(f"ERROR: unknown box whisker mode '{options.box_whisker}'")
 
