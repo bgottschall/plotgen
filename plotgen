@@ -40,7 +40,7 @@ import xopen
 import seaborn
 
 __prog__ = 'plotgen'
-__version__ = '0.7.2'
+__version__ = '0.7.3'
 __url__ = 'https://github.com/bgottschall/plotgen'
 
 
@@ -1040,8 +1040,8 @@ parserPlotGlobalOptions.add_argument("--font-size", help="font size (default %(d
 parserPlotGlobalOptions.add_argument("--font-family", help="font family (default %(default)s)", type=escapedStr, default='"Open Sans", verdana, arial, sans-serif')
 
 parserPlotGlobalOptions.add_argument("--legend", help="quick setting the legend position (default %(default)s)", type=str, choices=['topright', 'topcenter', 'topleft', 'bottomright', 'bottomcenter', 'bottomleft', 'middleleft', 'center', 'middleright', 'belowleft', 'belowcenter', 'belowright', 'aboveleft', 'abovecenter', 'aboveright', 'righttop', 'rightmiddle', 'rightbottom', 'lefttop', 'leftmiddle', 'leftbottom'], default='righttop')
-parserPlotGlobalOptions.add_argument("--legend-x", help="x legend position (-2 to 3)", type=float, choices=Range(-2, 3), default=None)
-parserPlotGlobalOptions.add_argument("--legend-y", help="y legend position (-2 to 3)", type=float, choices=Range(-2, 3), default=None)
+parserPlotGlobalOptions.add_argument("--legend-x", help="x legend position", type=float, choices=Range(-2, 3), default=None)
+parserPlotGlobalOptions.add_argument("--legend-y", help="y legend position", type=float, choices=Range(-2, 3), default=None)
 parserPlotGlobalOptions.add_argument("--legend-x-anchor", help="set legend xanchor", choices=['auto', 'left', 'center', 'right'], default=None)
 parserPlotGlobalOptions.add_argument("--legend-y-anchor", help="set legend yanchor", choices=['auto', 'top', 'bottom', 'middle'], default=None)
 parserPlotGlobalOptions.add_argument("--legend-hide", help="hides legend", default=None, action="store_true")
@@ -1062,6 +1062,8 @@ parserPlotGlobalOptions.add_argument("--width", help="plot width", type=int, def
 parserPlotGlobalOptions.add_argument("--height", help="plot height", type=int)
 
 parserOutputOptions = parser.add_argument_group('output options')
+parserOutputOptions.add_argument("--addon", help="Specify addon behavior. 'on' will load specified addon files or filename_addon.py if found. 'off' does not load any addon files.", default='on', choices=['on', 'off'])
+parserOutputOptions.add_argument("--addon-files", help="Specify addon files to source.", default=None, nargs='+')
 parserOutputOptions.add_argument("--browser", help="open plot in the browser", default=False, action="store_true")
 parserOutputOptions.add_argument("-o", "--output", help="export plot to file (html, pdf, svg, png, py, ...)", default=[], nargs='+')
 parserOutputOptions.add_argument("-q", "--quiet", action="store_true", help="no warnings and don't open output file", default=False)
@@ -1893,6 +1895,9 @@ from plotly.subplots import make_subplots
 # Disable MathJAX to avoid unnecessary message in pdf output
 pio.kaleido.scope.mathjax = None
 
+filepath = os.path.dirname(__file__)
+filename, fileext = os.path.splitext(os.path.basename(__file__))
+
 parser = argparse.ArgumentParser(description="plots the contained figure")
 parser.add_argument("--font-size", help="font size (default %(default)s)", type=int, default={args.font_size})
 parser.add_argument("--font-colour", help="font colour (default %(default)s)", default='{args.font_colour}')
@@ -1900,6 +1905,8 @@ parser.add_argument("--font-family", help="font family (default %(default)s)", d
 parser.add_argument("--width", help="width of output file (default %(default)s)", type=int, default={args.width})
 parser.add_argument("--height", help="height of output (default %(default)s)", type=int, default={args.height})
 parser.add_argument("--output", "-o", help="output file (html, png, jpeg, pdf...) (default %(default)s)", type=str, nargs="+", default={args.output})
+parser.add_argument("--addon", help=f"execute specified addon files or {{filename}}_addon{{fileext}} if found (default %(default)s)", choices=["on", "off"], default="{args.addon}")
+parser.add_argument("--addon-files", help=f"specify addon files to source when addon is enabled (default %(default)s)", default={args.addon_files}, nargs='+')
 parser.add_argument("--browser", help="open plot in browser", action="store_true")
 parser.add_argument("--quiet", "-q", help="no warnings and don't open output file", action="store_true")
 
@@ -2467,10 +2474,14 @@ plotScript.write(f"""fig.update_layout(font=dict(
 """)
 
 plotScript.write("""
-# Execute addon file if found
-filename, fileext = os.path.splitext(__file__)
-if (os.path.exists(f'{filename}_addon{fileext}')):
-    exec(open(f'{filename}_addon{fileext}').read())
+if args.addon == 'on':
+  # Execute addon file if found
+  if args.addon_files is not None:
+    for addonFile in args.addon_files:
+      if os.path.exists(addonFile):
+        exec(open(addonFile).read())
+  elif os.path.exists(os.path.join(filepath,f'{filename}_addon{fileext}')):
+        exec(open(os.path.join(filepath,f'{filename}_addon{fileext}')).read())
 
 """)
 
