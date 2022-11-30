@@ -40,7 +40,7 @@ import xopen
 import seaborn
 
 __prog__ = 'plotgen'
-__version__ = '0.7.1'
+__version__ = '0.7.2'
 __url__ = 'https://github.com/bgottschall/plotgen'
 
 
@@ -316,102 +316,75 @@ class DataframeActions:
             return frame.apply(filterMap[mode])
 
     def transpose(dataframe):
-        return dataframe.transpose()
+      return dataframe.transpose()
 
     def dropNaN(dataframe, dropAny=False):
-        return dataframe.dropna(how='any' if dropAny else 'all', axis=0).dropna(how='any' if dropAny else 'all', axis=1)
+      return dataframe.dropna(how='any' if dropAny else 'all', axis=0).dropna(how='any' if dropAny else 'all', axis=1)
 
     def sliceToColumnIds(dataframe, slices):
-        if not isinstance(slices, list):
-            slices = [slices]
-        return getSliceTypeIds(range(dataframe.shape[1]), slices)
+      if not isinstance(slices, list):
+        slices = [slices]
+      return getSliceTypeIds(range(dataframe.shape[1]), slices)
 
     def sliceToRowIds(dataframe, slices):
-        if not isinstance(slices, list):
-            slices = [slices]
-        return getSliceTypeIds(range(dataframe.shape[0]), slices)
+      if not isinstance(slices, list):
+        slices = [slices]
+      return getSliceTypeIds(range(dataframe.shape[0]), slices)
 
     def dropColumnsByIds(dataframe, colIds):
-        filterColumns = numpy.array([False if i in colIds else True for i in range(dataframe.shape[1])])
-        return dataframe.loc[:, filterColumns]
+      filterColumns = numpy.array([False if i in colIds else True for i in range(dataframe.shape[1])])
+      return dataframe.loc[:, filterColumns]
 
     def selectColumnsByIds(dataframe, colIds):
-        return dataframe.iloc[:, colIds]
+      return dataframe.iloc[:, colIds]
 
     def dropRowsByIds(dataframe, rowIds):
-        filterRows = numpy.array([False if i in rowIds else True for i in range(dataframe.shape[0])])
-        return dataframe.iloc[filterRows, :]
+      filterRows = numpy.array([False if i in rowIds else True for i in range(dataframe.shape[0])])
+      return dataframe.iloc[filterRows, :]
 
     def selectRowsByIds(dataframe, rowIds):
-        return dataframe.iloc[rowIds, :]
+      return dataframe.iloc[rowIds, :]
 
     def filterRowsByColumnData(dataframe, columnIds, data):
-        mode = data[0]
-        data = [float(x) if isFloat(x) else x for x in data[1:]]
-        for columnId in columnIds:
-            mask = [i for (i, x) in enumerate(DataframeActions.filterFunction(dataframe.iloc[:, columnId], data, mode)) if x]
-            dataframe = dataframe.iloc[mask, :]
-        return dataframe
+      mode = data[0]
+      data = [float(x) if isFloat(x) else x for x in data[1:]]
+      for columnId in columnIds:
+        mask = [i for (i, x) in enumerate(DataframeActions.filterFunction(dataframe.iloc[:, columnId], data, mode)) if x]
+        dataframe = dataframe.iloc[mask, :]
+      return dataframe
 
     def filterColumnsByRowData(dataframe, rowIds, data):
-        mode = data[0]
-        data = [float(x) if isFloat(x) else x for x in data[1:]]
-        for rowId in rowIds:
-            mask = [i for (i, x) in enumerate(DataframeActions.filterFunction(dataframe.iloc[rowId, :], data, mode)) if x]
-            dataframe = dataframe.iloc[:, mask]
-        return dataframe
+      return DataframeAction.filterRowsByColumnData(dataframe.T, rowIds, data).T
 
     def getColumnIds(dataframe, columns, mode='all', ignore_errors=False):
-        if not isinstance(columns, list):
-            columns = [columns]
-        columnIds = []
-        for col in columns:
-            if str(col) not in [str(x) for x in dataframe.columns]:
-                isSlice = True
-                try:
-                    s = SliceType()(col)
-                    columnIds.extend(DataframeActions.sliceToColumnIds(dataframe, s))
-                except Exception:
-                    isSlice = False
-                if not isSlice and not ignore_errors:
-                    raise Exception(f'Could not find column name {col}')
-            else:
-                selection = reversed(list(enumerate(dataframe.columns.tolist()))) if mode == 'last' else enumerate(dataframe.columns.tolist())
-                for i, fcol in selection:
-                    if str(fcol) == str(col):
-                        columnIds.append(i)
-                        if mode != 'all':
-                            break
-        return columnIds
+      if not isinstance(columns, list):
+        columns = [columns]
+      columnIds = []
+
+      strColumns = map(str, columns)
+      strFloatedColumns = [str(float(x)) if isFloat(x) else None for x in columns]
+      targetColumns = list(enumerate(map(str, dataframe.columns.tolist())))
+
+      for (strCol, floatCol) in zip(strColumns, strFloatedColumns):
+        appendIds = [selId for selId, selCol in targetColumns if selCol == strCol or (floatCol is not None and selCol == floatCol)]
+        if len(appendIds) > 0:
+          columnIds.extend([appendIds[0]] if mode == 'first' else [appendIds[-1]] if mode == 'last' else appendIds)
+        elif isSliceType(strCol):
+          columnIds.extend(DataframeActions.sliceToColumnIds(dataframe, SliceType()(strCol)))
+        elif not ignore_errors:
+          raise Exception(f'Could not find row/column name {strCol}')
+      return columnIds
 
     def getRowIds(dataframe, rows, mode='all', ignore_errors=False):
-        if not isinstance(rows, list):
-            rows = [rows]
-        rowIds = []
-        for row in rows:
-            if str(row) not in [str(x) for x in dataframe.index]:
-                isSlice = True
-                try:
-                    s = SliceType()(row)
-                    rowIds.extend(DataframeActions.sliceToRowIds(dataframe, s))
-                except Exception:
-                    isSlice = False
-                if not isSlice and not ignore_errors:
-                    raise Exception(f'Could not find row name {row}')
-            else:
-                selection = reversed(list(enumerate(dataframe.index.tolist()))) if mode == 'last' else enumerate(dataframe.index.tolist())
-                for i, frow in selection:
-                    if str(frow) == str(row):
-                        rowIds.append(i)
-                        if mode != 'all':
-                            break
-        return rowIds
+      return DataframeActions.getColumnIds(dataframe.T, rows, mode, ignore_errors)
 
     def resetIndex(dataframe):
-        return dataframe.reset_index()
+      dataframe.index = dataframe.index.map(lambda x: float(x) if isFloat(x) else numpy.nan if isinstance(x, str) and x.lower() in considerAsNaN else x)
+      dataframe.reset_index(inplace=True)
+      return dataframe
 
     def resetColumns(dataframe):
-        return dataframe.T.reset_index().T
+      return DataframeActions.resetIndex(dataframe.T).T
 
     def setIndexColumnByIdx(dataframe, colIdx):
         return dataframe.set_index(pandas.Index(dataframe.iloc[:, colIdx], name=dataframe.columns[colIdx]))
@@ -426,13 +399,7 @@ class DataframeActions:
         return dataframe
 
     def renameRows(dataframe, rowIds, names):
-        lRows = dataframe.index.tolist()
-        for i, rowId in enumerate(rowIds):
-            if i >= len(names) or i >= len(lRows):
-                break
-            lRows[rowId] = float(names[i]) if isFloat(names[i]) else names[i]
-        dataframe.set_index(pandas.Series(lRows, name=dataframe.index.name), inplace=True)
-        return dataframe
+      return DataframeActions.renameColumns(dataframe.T, rowIds, names).T
 
     def sortRows(dataframe, function=['none'], order='asc'):
       return DataframeActions.sortColumns(dataframe.T, function, order).T
@@ -818,8 +785,8 @@ parserFileOptions.add_argument("--index-icolumn", help="set index column by inde
 parserFileOptions.add_argument("--index-column", help="set index column by name", default=None, type=str, sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--columns-irow", help="set columns row by index", type=int, sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--columns-row", help="set columns row by name", default=None, type=str, sticky_default=True, action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--reset-index", help="reset index back as first column", default=False, nargs=0, sub_action="store_true", sticky_default=True, action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--reset-columns", help="reset columns back as first row", default=False, nargs=0, sub_action="store_true", sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--reset-index", help="reset index back as first column (will be reinterpreted as float/nan data if possible)", default=False, nargs=0, sub_action="store_true", sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--reset-columns", help="reset columns back as first row (will be reinterpret as float/nan data if possible)", default=False, nargs=0, sub_action="store_true", sticky_default=True, action=ChildAction, parent=inputFileArgument)
 
 parserFileOptions.add_argument("--select-mode", help="select row/columns policy (default %(default)s)", type=str, default='all', choices=['all', 'first', 'last'], action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--ignore-icolumns", help="ignore column by indexes (or slices)", type=SliceType(), default=[], sticky_default=True, nargs='+', action=ChildAction, parent=inputFileArgument)
@@ -1335,8 +1302,8 @@ for input in args.input:
             else:
                 frame = frame.apply(pandas.to_numeric, errors='ignore')
                 frame = frame.applymap(lambda x: float(x) if isFloat(x) else numpy.nan if isinstance(x, str) and x.lower() in considerAsNaN else x)
-                frame.index = pandas.to_numeric(frame.index, errors='ignore')
-                frame.index = frame.index.map(lambda x: float(x) if isFloat(x) else numpy.nan if isinstance(x, str) and x.lower() in considerAsNaN else x)
+                # frame.index = pandas.to_numeric(frame.index, errors='ignore')
+                # frame.index = frame.index.map(lambda x: float(x) if isFloat(x) else numpy.nan if isinstance(x, str) and x.lower() in considerAsNaN else x)
 
                 inputFrames.append((options, frame))
         else:
@@ -1348,6 +1315,7 @@ for input in args.input:
                                     sep=options.delimiter,
                                     header=None,
                                     index_col=0 if not options.no_index else None,
+                                    dtype=object,
                                     engine='python')
 
             if (not options.no_index):
@@ -1356,13 +1324,12 @@ for input in args.input:
             if (not options.no_columns):
                 frame.columns = frame.iloc[0]
                 frame.columns.name = None
-                # frame.columns.name = frame.iloc[0].name
                 frame = DataframeActions.dropRowsByIds(frame, [0])
 
             frame = frame.apply(pandas.to_numeric, errors='ignore')
             frame = frame.applymap(lambda x: float(x) if isFloat(x) else numpy.nan if isinstance(x, str) and x.lower() in considerAsNaN else x)
-            frame.index = pandas.to_numeric(frame.index, errors='ignore')
-            frame.index = frame.index.map(lambda x: float(x) if isFloat(x) else numpy.nan if isinstance(x, str) and x.lower() in considerAsNaN else x)
+            # frame.index = pandas.to_numeric(frame.index, errors='ignore')
+            # frame.index = frame.index.map(lambda x: float(x) if isFloat(x) else numpy.nan if isinstance(x, str) and x.lower() in considerAsNaN else x)
 
             options.frameCount = 1
             options.frameIndex = inputOptions.frameCount
