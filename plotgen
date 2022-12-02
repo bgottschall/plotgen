@@ -354,7 +354,7 @@ class DataframeActions:
       return dataframe
 
     def filterColumnsByRowData(dataframe, rowIds, data):
-      return DataframeAction.filterRowsByColumnData(dataframe.T, rowIds, data).T
+      return DataframeActions.filterRowsByColumnData(dataframe.T, rowIds, data).T
 
     def getColumnIds(dataframe, columns, mode='all', ignore_errors=False):
       if not isinstance(columns, list):
@@ -378,8 +378,36 @@ class DataframeActions:
     def getRowIds(dataframe, rows, mode='all', ignore_errors=False):
       return DataframeActions.getColumnIds(dataframe.T, rows, mode, ignore_errors)
 
+    def parseColumnIdsToString(dataframe, columnIds):
+      transformer = lambda x: (str(numpy.floor(float(x)).astype(int)) if numpy.floor(float(x)).astype(int) == float(x) else str(float(x))) if isFloat(x) else str(x)
+      if not isinstance(columnIds, list):
+        columnIds = [columnIds]
+      if 'index' in columnIds:
+        dataframe.index = dataframe.index.map(transformer)
+        columnIds = [c for c in columnIds if c != 'index']
+      if len(columnIds) > 0:
+        dataframe = dataframe.iloc[:, columnIds].applymap(transformer)
+      return dataframe
+
+    def parseRowIdsToString(dataframe, rowIds):
+      return DataframeActions.parseColumnIdsToString(dataframe.T, ['index' if r == 'columns' else r for r in rowIds]).T
+
+    def parseColumnIdsToFloat(dataframe, columnIds):
+      transformer = lambda x: float(x) if isFloat(x) else (numpy.nan if isinstance(x, str) and x.lower() in considerAsNaN else x)
+      if not isinstance(columnIds, list):
+        columnIds = [columnIds]
+      if 'index' in columnIds:
+        dataframe.index = dataframe.index.map(transformer)
+        columnIds = [c for c in columnIds if c != 'index']
+      if len(columnIds) > 0:
+        dataframe = dataframe.iloc[:, columnIds].applymap(transformer)
+      return dataframe
+
+    def parseRowIdsToFloat(dataframe, rowIds):
+      return DataframeActions.parseColumnIdsToFloat(dataframe.T, ['index' if r == 'columns' else r for r in rowIds]).T
+
     def resetIndex(dataframe):
-      dataframe.index = dataframe.index.map(lambda x: float(x) if isFloat(x) else numpy.nan if isinstance(x, str) and x.lower() in considerAsNaN else x)
+      dataframe = DataframeActions.parseColumnIdsToFloat(dataframe, ['index'])
       dataframe.reset_index(inplace=True)
       return dataframe
 
@@ -387,7 +415,7 @@ class DataframeActions:
       return DataframeActions.resetIndex(dataframe.T).T
 
     def setIndexColumnByIdx(dataframe, colIdx):
-        return dataframe.set_index(pandas.Index(dataframe.iloc[:, colIdx], name=dataframe.columns[colIdx]))
+        return DataframeActions.parseColumnIdsToString(dataframe.set_index(pandas.Index(dataframe.iloc[:, colIdx], name=dataframe.columns[colIdx])), ['index'])
 
     def renameColumns(dataframe, columnIds, names):
         lColumns = dataframe.columns.tolist()
@@ -543,7 +571,7 @@ class DataframeActions:
                         if not quiet and fitTarget.isna().values.any():
                             print('WARNING: NaN values are replaced with zero for polynomial fitting!', file=sys.stderr)
                         fitTarget = fitTarget.fillna(0).to_list()
-                        fitAlong = dataframe.index.to_list()
+                        fitAlong = [float(x) if isFloat(x) else x for x in dataframe.index.to_list()]
                         if not all([isFloat(x) for x in fitAlong]):
                             if not quiet and not indexWarning:
                                 indexWarning = True
@@ -631,7 +659,7 @@ class DataframeActions:
             if len(dataframe.columns) != len(newColumnLabels):
                 raise Exception('Grouping dropped "nuisances" columns, and is considered not successful. This is probably due to incompatible data types in columns.')
             dataframe.columns = newColumnLabels
-            return dataframe.set_index(dataframe.iloc[:, 0]).iloc[:, 1:]
+            return DataframeActions.parseColumnIdsToString(dataframe.set_index(dataframe.iloc[:, 0]).iloc[:, 1:], ['index'])
 
     def stackRowId(dataframe, rowId):
       if rowId == 'columns':
@@ -651,7 +679,7 @@ class DataframeActions:
         dataframe = dataframe.reset_index()
         dataframe = dataframe.set_index(dataframe.iloc[:, 0]).iloc[:, 1:]
         dataframe.index.name = l0Name
-      return dataframe
+      return DataframeActions.parseColumnIdsToString(DataframeActions.parseRowIdsToString(DataframeActions.parseColumnIdsToFloat(dataframe, list(range(dataframe.shape[1]))), ['columns']), ['index'])
 
     def stackColumnId(dataframe, columnId):
       return DataframeActions.stackRowId(dataframe.T, 'columns' if columnId == 'index' else columnId).T
@@ -678,11 +706,12 @@ class DataframeActions:
         dataframe = dataframe.set_index(dataframe.iloc[:, 0]).iloc[:, 1:].T
         dataframe.index.name = l0Name
         dataframe.columns.name = None
-      return dataframe
+      return DataframeActions.parseColumnIdsToString(DataframeActions.parseRowIdsToString(DataframeActions.parseColumnIdsToFloat(dataframe, list(range(dataframe.shape[1]))), ['columns']), ['index'])
 
     def joinFrames(dataframes, function='index', how='outer'):
       joinedFrame = None
       for frame in dataframes:
+
         joinedFrame = frame if joinedFrame is None else pandas.concat([joinedFrame, frame], axis=(1 if function == 'index' else 0), join=how, verify_integrity=False, copy=True)
       return joinedFrame
 
@@ -1304,8 +1333,9 @@ for input in args.input:
             else:
                 frame = frame.apply(pandas.to_numeric, errors='ignore')
                 frame = frame.applymap(lambda x: float(x) if isFloat(x) else numpy.nan if isinstance(x, str) and x.lower() in considerAsNaN else x)
-                # frame.index = pandas.to_numeric(frame.index, errors='ignore')
-                # frame.index = frame.index.map(lambda x: float(x) if isFloat(x) else numpy.nan if isinstance(x, str) and x.lower() in considerAsNaN else x)
+
+                frame = DataframeActions.parseColumnIdsToString(frame, ['index'])
+                frame = DataframeActions.parseRowIdsToString(frame, ['columns'])
 
                 inputFrames.append((options, frame))
         else:
@@ -1330,8 +1360,9 @@ for input in args.input:
 
             frame = frame.apply(pandas.to_numeric, errors='ignore')
             frame = frame.applymap(lambda x: float(x) if isFloat(x) else numpy.nan if isinstance(x, str) and x.lower() in considerAsNaN else x)
-            # frame.index = pandas.to_numeric(frame.index, errors='ignore')
-            # frame.index = frame.index.map(lambda x: float(x) if isFloat(x) else numpy.nan if isinstance(x, str) and x.lower() in considerAsNaN else x)
+
+            frame = DataframeActions.parseColumnIdsToString(frame, ['index'])
+            frame = DataframeActions.parseRowIdsToString(frame, ['columns'])
 
             options.frameCount = 1
             options.frameIndex = inputOptions.frameCount
