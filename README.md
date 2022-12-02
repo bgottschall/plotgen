@@ -54,7 +54,7 @@ plotgen -i lines.tsv --print --browser --output lines.py lines.pdf --width 1920 
 
 The full power becomes visisble when working with multiple files (but also the same file more than once) and processing the data and making subplots:
 ```
-plotgen -i lines.tsv --row 1 --select-columns Sin -i lines.tsv --row 2 --index-column Sin --select-columns Cos --sort-rows asc --sort-rows-by column --sort-rows-column Cos
+plotgen -i lines.tsv --row 1 --select-columns Sin -i lines.tsv --row 2 --sort-order desc --sort-by-column Sin --select-column Cos 
 ```
 Selection of rows and columns is order sensitive and allows custom trace or data point ordering or duplication of traces and datapoints by repeating the names. All data row and column options also support numeric indexing by using e.g. --select-icolumns 0 1 2 etc.
 
