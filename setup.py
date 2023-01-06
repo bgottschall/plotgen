@@ -19,7 +19,7 @@ setup(
         'License :: OSI Approved :: MIT License',
         'Operating System :: OS Independent'
         ],
-   keywords='tables graph plot parser',
+   keywords='tables graph plot parser plotly',
    python_requires='>=3.7',
    install_requires=[
        'argcomplete>=1.12.3', 

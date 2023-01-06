@@ -40,7 +40,7 @@ import xopen
 import seaborn
 
 __prog__ = 'plotgen'
-__version__ = '0.7.3'
+__version__ = '0.7.4'
 __url__ = 'https://github.com/bgottschall/plotgen'
 
 
@@ -359,20 +359,22 @@ class DataframeActions:
     def getColumnIds(dataframe, columns, mode='all', ignore_errors=False):
       if not isinstance(columns, list):
         columns = [columns]
-      columnIds = []
 
-      strColumns = map(str, columns)
-      strFloatedColumns = [str(float(x)) if isFloat(x) else None for x in columns]
+      columnIds = []
+      transformer = lambda x: (str(numpy.floor(float(x)).astype(int)) if numpy.floor(float(x)).astype(int) == float(x) else str(float(x))) if isFloat(x) else str(x)
+
+      origColumns = map(str, columns)
+      strColumns = map(transformer, columns)
       targetColumns = list(enumerate(map(str, dataframe.columns.tolist())))
 
-      for (strCol, floatCol) in zip(strColumns, strFloatedColumns):
-        appendIds = [selId for selId, selCol in targetColumns if selCol == strCol or (floatCol is not None and selCol == floatCol)]
+      for origCol, strCol in zip(origColumns, strColumns):
+        appendIds = [selId for selId, selCol in targetColumns if (selCol == origCol) or (selCol == strCol)]
         if len(appendIds) > 0:
           columnIds.extend([appendIds[0]] if mode == 'first' else [appendIds[-1]] if mode == 'last' else appendIds)
-        elif isSliceType(strCol):
-          columnIds.extend(DataframeActions.sliceToColumnIds(dataframe, SliceType()(strCol)))
+        elif isSliceType(origCol):
+          columnIds.extend(DataframeActions.sliceToColumnIds(dataframe, SliceType()(origCol)))
         elif not ignore_errors:
-          raise Exception(f'Could not find row/column name {strCol}')
+          raise Exception(f'Could not find row/column name {col}')
       return columnIds
 
     def getRowIds(dataframe, rows, mode='all', ignore_errors=False):
