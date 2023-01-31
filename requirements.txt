@@ -1,3 +1,4 @@
+scipy>=1.8.1
 argcomplete>=1.12.3
 plotly>=5.1.0
 numpy>=1.21.1

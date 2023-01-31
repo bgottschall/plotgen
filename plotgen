@@ -38,9 +38,12 @@ import textwrap
 import shutil
 import xopen
 import seaborn
+import plotly.figure_factory
+import scipy.cluster.hierarchy
+import scipy.spatial.distance
 
 __prog__ = 'plotgen'
-__version__ = '0.7.4'
+__version__ = '0.7.5'
 __url__ = 'https://github.com/bgottschall/plotgen'
 
 
@@ -374,7 +377,7 @@ class DataframeActions:
         elif isSliceType(origCol):
           columnIds.extend(DataframeActions.sliceToColumnIds(dataframe, SliceType()(origCol)))
         elif not ignore_errors:
-          raise Exception(f'Could not find row/column name {col}')
+          raise Exception(f'Could not find row/column name {origCol}')
       return columnIds
 
     def getRowIds(dataframe, rows, mode='all', ignore_errors=False):
@@ -922,7 +925,7 @@ parserFileOptions.add_argument("--pickle", help="save pickled frames to files (o
 
 # Per File Plotting Arguments:
 parserPlotOptions = parser.add_argument_group('plot options')
-parserPlotOptions.add_argument('--plot', choices=['line', 'bar', 'box', 'violin', 'heatmap'], help='plot type', default='line', action=ChildAction, parent=inputFileArgument)
+parserPlotOptions.add_argument('--plot', choices=['line', 'bar', 'box', 'violin', 'heatmap', 'dendrogram'], help='plot type', default='line', action=ChildAction, parent=inputFileArgument)
 parserPlotOptions.add_argument("--orientation", help="set plot orientation", default='auto', choices=['vertical', 'v', 'horizontal', 'h', 'auto'], action=ChildAction, parent=inputFileArgument)
 parserPlotOptions.add_argument("--title", help="subplot title", type=escapedStr, default=None, sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserPlotOptions.add_argument("--use-name", help="use name for traces", type=escapedStr, default=None, sticky_default=True, action=ChildAction, parent=inputFileArgument)
@@ -981,6 +984,12 @@ parserBoxPlotOptions.add_argument("--box-gap", help="gap between boxes (default 
 parserBoxPlotOptions.add_argument("--box-group-gap", help="gap between box groups (default %(default)s) (not compatible with box-width)", type=float, default=0.3, choices=Range(0, 1))
 
 
+parserDendrogramPlotOptions = parser.add_argument_group('dendrogram plot options')
+parserBoxPlotOptions.add_argument("--dendrogram-distance", help="choose the distance function, default %(default)s)", default='euclidean', choices=['chebyshev', 'cityblock', 'correlation', 'cosine', 'dice', 'euclidean', 'hamming', 'jaccard', 'jensenshannon', 'kulczynski1', 'mahalanobis', 'matching', 'minkowski', 'rogerstanimoto', 'russellrao', 'seuclidean', 'sokalmichener', 'sokalsneath', 'sqeuclidean', 'yule'], action=ChildAction, parent=inputFileArgument)
+parserBoxPlotOptions.add_argument("--dendrogram-linkage", help="choose the linkage function, default %(default)s)", default='average', choices=['single' ,'complete', 'average', 'weighted', 'ward', 'centroid', 'median'], action=ChildAction, parent=inputFileArgument)
+parserBoxPlotOptions.add_argument("--dendrogram-colour-threshold", help="colouring threshold, default %(default)s)", default=None, type=float, action=ChildAction, parent=inputFileArgument)
+
+
 parserPlotAxisOptions = parser.add_argument_group('plot axis options')
 parserPlotAxisOptions.add_argument("--y-secondary", help="plot to secondary y-axis", default=False, sticky_default=True, nargs=0, sub_action="store_true", action=ChildAction, parent=inputFileArgument)
 parserPlotAxisOptions.add_argument("--y-title", help="y-axis title", type=escapedStr, default=None, sticky_default=True, action=ChildAction, parent=inputFileArgument)
@@ -999,8 +1008,6 @@ parserPlotAxisOptions.add_argument("--y-range-from", help="y-axis start (default
 parserPlotAxisOptions.add_argument("--x-range-from", help="x-axis start (default %(default)s)", default='auto', sticky_default=True, choices=Range(None, None, ['auto']), action=ChildAction, parent=inputFileArgument)
 parserPlotAxisOptions.add_argument("--y-range-to", help="y-axis end (default %(default)s)", default='auto', sticky_default=True, choices=Range(None, None, ['auto']), action=ChildAction, parent=inputFileArgument)
 parserPlotAxisOptions.add_argument("--x-range-to", help="x-axis start (default %(default)s)", default='auto', sticky_default=True, choices=Range(None, None, ['auto']), action=ChildAction, parent=inputFileArgument)
-parserPlotAxisOptions.add_argument("--y-tick-hide", help="set format of y-axis ticks", default=False, nargs=0, sub_action="store_true", sticky_default=True, action=ChildAction, parent=inputFileArgument)
-parserPlotAxisOptions.add_argument("--x-tick-hide", help="set format of y-axis ticks", default=False, nargs=0, sub_action="store_true", sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserPlotAxisOptions.add_argument("--y-tick-format", help="set format of y-axis ticks", default='', sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserPlotAxisOptions.add_argument("--x-tick-format", help="set format of x-axis ticks", default='', sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserPlotAxisOptions.add_argument("--y-tick-suffix", help="set suffix to y-axis ticks", default='', sticky_default=True, action=ChildAction, parent=inputFileArgument)
@@ -1029,6 +1036,15 @@ parserPlotAxisOptions.add_argument("--y-colour", help="set y-axis colour", type=
 parserPlotAxisOptions.add_argument("--x-colour", help="set x-axis colour", type=escapedStr, default=None, action=ChildAction, parent=inputFileArgument)
 parserPlotAxisOptions.add_argument("--y-line-width", help="set y-axis line width (default %(default)s)", type=float, choices=Range(0, None), default=0, action=ChildAction, parent=inputFileArgument)
 parserPlotAxisOptions.add_argument("--x-line-width", help="set x-axis line width (default %(default)s)", type=float, choices=Range(0, None), default=0, action=ChildAction, parent=inputFileArgument)
+parserPlotAxisOptions.add_argument("--y-show-grid", help="set the visibility of the y-grid (default %(default)s)", choices=['on', 'off'], default='on', action=ChildAction, parent=inputFileArgument)
+parserPlotAxisOptions.add_argument("--x-show-grid", help="set the visibility of the x-grid (default %(default)s)", choices=['on', 'off'], default='on', action=ChildAction, parent=inputFileArgument)
+parserPlotAxisOptions.add_argument("--y-show-zero-line", help="set the visibility of the y zero line (default %(default)s)", choices=['on', 'off'], default='on', action=ChildAction, parent=inputFileArgument)
+parserPlotAxisOptions.add_argument("--x-show-zero-line", help="set the visibility of the x zero line (default %(default)s)", choices=['on', 'off'], default='on', action=ChildAction, parent=inputFileArgument)
+parserPlotAxisOptions.add_argument("--y-show-tick-labels", help="set the visibility of the y tick labels (default %(default)s)", choices=['on', 'off'], default='on', action=ChildAction, parent=inputFileArgument)
+parserPlotAxisOptions.add_argument("--x-show-tick-labels", help="set the visibility of the x tick labels (default %(default)s)", choices=['on', 'off'], default='on', action=ChildAction, parent=inputFileArgument)
+parserPlotAxisOptions.add_argument("--y-mirror", help="set y axis mirror mode (default %(default)s)", choices=['on', 'ticks', 'off' , 'all', 'allticks'], default='off', action=ChildAction, parent=inputFileArgument)
+parserPlotAxisOptions.add_argument("--x-mirror", help="set x axis mirror mode (default %(default)s)", choices=['on', 'ticks', 'off' , 'all', 'allticks'], default='off', action=ChildAction, parent=inputFileArgument)
+
 parserPlotAxisOptions.add_argument("--grid-colour", help="set grid colour", type=escapedStr, default=None, action=ChildAction, parent=inputFileArgument)
 
 parserColourOptions = parser.add_argument_group('colour options')
@@ -1177,6 +1193,20 @@ for input in args.input:
     options.bar_shift = None if options.bar_shift == 'auto' else float(options.bar_shift)
     options.y_tickangle = None if options.y_tickangle == 'auto' else float(options.y_tickangle)
     options.x_tickangle = None if options.x_tickangle == 'auto' else float(options.x_tickangle)
+
+    options.y_show_grid = True if options.y_show_grid == 'on' else False
+    options.x_show_grid = True if options.x_show_grid == 'on' else False
+    options.y_show_zero_line = True if options.y_show_zero_line == 'on' else False
+    options.x_show_zero_line = True if options.x_show_zero_line == 'on' else False
+    options.y_show_tick_labels = True if options.y_show_tick_labels == 'on' else False
+    options.x_show_tick_labels = True if options.x_show_tick_labels == 'on' else False
+    options.y_mirror = True if options.y_mirror == 'on' else False if options.y_mirror == 'off' else f"'{options.y_mirror}'"
+    options.x_mirror = True if options.x_mirror == 'on' else False if options.x_mirror == 'off' else f"'{options.x_mirror}'"
+
+    options.y_tick0 = None if options.y_tick0 is None else f"'{options.y_tick0}'"
+    options.x_tick0 = None if options.x_tick0 is None else f"'{options.x_tick0}'"
+    options.y_dtick = None if options.y_dtick is None else f"'{options.y_dtick}'"
+    options.x_dtick = None if options.x_dtick is None else f"'{options.x_dtick}'"
 
     options.y_autorange = f"'{options.y_autorange}'" if options.y_autorange not in ['on', 'off'] else 'False' if options.y_autorange == 'off' or options.y_range_to is not None or options.y_range_from is not None else 'True'
     options.x_autorange = f"'{options.y_autorange}'" if options.x_autorange not in ['on', 'off'] else 'False' if options.x_autorange == 'off' or options.x_range_to is not None or options.x_range_from is not None else 'True'
@@ -1829,6 +1859,9 @@ for input in args.input:
     subplotGridDefinition[inputOptions.row][inputOptions.col]['traces'] += inputOptions.traceCount
     subplotGridDefinition[inputOptions.row][inputOptions.col]['frames'] += inputOptions.frameCount
 
+    if inputOptions.plot == 'dendrogram':
+        subplotGridDefinition[inputOptions.row][inputOptions.col]['palette_count'] = 8
+
     data.append({'options': copy.deepcopy(inputOptions), 'frames': [f.where(pandas.notnull(f), None) for f in [f for i, (_, f) in enumerate(inputFrames) if i in focusedFrames]]})
 
     gc.collect()
@@ -2051,7 +2084,7 @@ for input in data:
             if (colName == options.special_column_prefix + 'category') and _categories is None:
               _categories = ['' if x is None else x for x in frame.iloc[:, colIndex].values.tolist()]
 
-        if options.plot not in ['heatmap']:
+        if options.plot not in ['heatmap', 'dendrogram']:
             for colIndex, _ in enumerate(frame.columns):
                 col = str(frame.columns[colIndex])
                 if col in options.traceSpecialColumns or col in options.frameSpecialColumns:
@@ -2382,7 +2415,8 @@ fig.add_trace(go.Violin(
 
         else:
             # Generate continuous colour scale as we will need it here
-            if subplot['cmap'] is None:
+            if options.plot == 'heatmap':
+              if subplot['cmap'] is None:
                 try:
                     seaborn_cmap = seaborn.color_palette(subplot['palette'], as_cmap=True)
                     if subplot['palette_cmap'] in ['log', 'rlog']:
@@ -2397,20 +2431,62 @@ fig.add_trace(go.Violin(
                 except Exception:
                     raise 'ERROR: could not generated continuous colour scale, is the chosen seaborn palette compatible?'
 
-            data = frame.values.T.tolist() if options.vertical else frame.values.tolist()
-            yaxis = list(frame.columns) if options.vertical else list(frame.index)
-            xaxis = list(frame.columns) if not options.vertical else list(frame.index)
-            updateRange(plotRange, [xaxis, yaxis])
-            if options.plot == 'heatmap':
+              data = frame.values.T.tolist() if options.vertical else frame.values.tolist()
+              yaxis = list(frame.columns) if options.vertical else list(frame.index)
+              xaxis = list(frame.columns) if not options.vertical else list(frame.index)
+              updateRange(plotRange, [xaxis, yaxis])
+
+              plotScript.write(f"""
+fig.add_trace(go.Heatmap(
+    y={yaxis},
+    x={xaxis},
+    z={data},
+{commentColour}    colorscale={subplot['cmap']},
+    showscale={options.colour_scale == 'show'},
+), col={options.col}, row={options.row}, secondary_y={options.y_secondary})
+              """)
+            elif options.plot == 'dendrogram':
+              data = frame.values.tolist()
+              labels = list(frame.index)
+
+
+              if options.dendrogram_linkage in ['centroid', 'median', 'ward'] and options.dendrogram_distance != 'euclidiean' and not args.quiet:
+                print(f"WARNING: linkage method {options.dendrogram_linkage} is only correctly defined for the euclidian distance!")
+
+              dendrogram = plotly.figure_factory.create_dendrogram(
+                numpy.array(data),
+                labels=labels,
+                orientation='bottom' if options.vertical else 'left' if not options.y_secondary else 'right',
+                colorscale=subplot['colours'] if args.theme == 'palette' else None,
+                distfun=lambda x: scipy.spatial.distance.pdist(x, options.dendrogram_distance),
+                linkagefun=lambda x: scipy.cluster.hierarchy.linkage(x, options.dendrogram_linkage),
+                color_threshold=options.dendrogram_colour_threshold
+              )
+
+
+              if options.vertical:
+                options.x_show_zero_line = False
+                options.y_show_zero_line = False
+                options.x_tickmode = dendrogram['layout']['xaxis']['tickmode']
+                options.x_ticktext = list(dendrogram['layout']['xaxis']['ticktext'])
+                options.x_tickvals = list(dendrogram['layout']['xaxis']['tickvals'])
+              else:
+                options.x_show_zero_line = False
+                options.y_show_zero_line = False
+                options.y_tickmode = dendrogram['layout']['yaxis']['tickmode']
+                options.y_ticktext = list(dendrogram['layout']['yaxis']['ticktext'])
+                options.y_tickvals = list(dendrogram['layout']['yaxis']['tickvals'])
+
+              for dendrogramTrace in dendrogram['data']:
+                updateRange(plotRange, [list(dendrogramTrace['x']), list(dendrogramTrace['y'])] if options.horizontal else [list(dendrogramTrace['y']), list(dendrogramTrace['x'])])
+                sDendrogramTrace = f"{dendrogramTrace}".replace('Scatter', 'go.Scatter').replace('array([','[').replace('])',']')
                 plotScript.write(f"""
-    fig.add_trace(go.Heatmap(
-        y={yaxis},
-        x={xaxis},
-        z={data},
-    {commentColour}    colorscale={subplot['cmap']},
-        showscale={options.colour_scale == 'show'},
-    ), col={options.col}, row={options.row}, secondary_y={options.y_secondary})
-                """)
+fig.add_trace({sDendrogramTrace}, col={options.col}, row={options.row}, secondary_y={options.y_secondary})
+              """)
+            else:
+              raise f'ERROR: unknown plot type {options.plot}'
+
+
 
         inputIndex += 1
         if subplot['palette_local']:
@@ -2436,7 +2512,6 @@ fig.add_trace(go.Violin(
         options.y_line_width = 1
     if multiCategory and options.vertical and not options.x_line_width_forced:
         options.x_line_width = 1
-
     plotScript.write("\n\n")
     plotScript.write("# Subplot specific options:\n")
     plotScript.write(f"fig.update_yaxes(type='{options.y_type}', rangemode='{options.y_range_mode}', automargin={True if options.y_title_standoff is None else False}, title_standoff={options.y_title_standoff}, col={options.col}, row={options.row}, secondary_y={options.y_secondary})\n")
@@ -2447,12 +2522,12 @@ fig.add_trace(go.Violin(
     plotScript.write("# Multi-category options:\n")
     plotScript.write(f"fig.update_yaxes(showdividers={options.y_line_width > 0}, dividercolor={options.y_colour}, dividerwidth={options.y_line_width}, col={options.col}, row={options.row}, secondary_y={options.y_secondary})\n")
     plotScript.write(f"fig.update_xaxes(showdividers={options.x_line_width > 0}, dividercolor={options.x_colour}, dividerwidth={options.x_line_width}, col={options.col}, row={options.row})\n")
-    plotScript.write(f"{'# ' if not options.y_hide else ''}fig.update_yaxes(visible=False, showticklabels=False, showgrid=True, zeroline=False, row={options.row}, col={options.col}, secondary_y={options.y_secondary})\n")
-    plotScript.write(f"{'# ' if not options.x_hide else ''}fig.update_xaxes(visible=False, showticklabels=False, showgrid=True, zeroline=False, row={options.row}, col={options.col})\n")
+    plotScript.write(f"fig.update_yaxes(visible={not options.y_hide}, showticklabels={options.y_show_tick_labels}, showgrid={options.y_show_grid}, zeroline={options.y_show_zero_line}, row={options.row}, col={options.col}, secondary_y={options.y_secondary})\n")
+    plotScript.write(f"fig.update_xaxes(visible={not options.x_hide}, showticklabels={options.x_show_tick_labels}, showgrid={options.x_show_grid}, zeroline={options.x_show_zero_line}, row={options.row}, col={options.col})\n")
     plotScript.write(f"{'# ' if options.y_title is None else ''}fig.update_yaxes(title_text='{options.y_title}', col={options.col}, row={options.row}, secondary_y={options.y_secondary})\n")
     plotScript.write(f"{'# ' if options.x_title is None else ''}fig.update_xaxes(title_text='{options.x_title}', col={options.col}, row={options.row})\n")
-    plotScript.write(f"fig.update_yaxes(tickcolor={options.y_colour}, tickformat='{options.y_tick_format}', ticksuffix='{options.y_tick_suffix}', tickprefix='{options.y_tick_prefix}', col={options.col}, row={options.row}, secondary_y={options.y_secondary})\n")
-    plotScript.write(f"fig.update_xaxes(tickcolor={options.x_colour}, tickformat='{options.x_tick_format}', ticksuffix='{options.x_tick_suffix}', tickprefix='{options.x_tick_prefix}', col={options.col}, row={options.row})\n")
+    plotScript.write(f"fig.update_yaxes(mirror={options.y_mirror}, tickcolor={options.y_colour}, tickformat='{options.y_tick_format}', ticksuffix='{options.y_tick_suffix}', tickprefix='{options.y_tick_prefix}', col={options.col}, row={options.row}, secondary_y={options.y_secondary})\n")
+    plotScript.write(f"fig.update_xaxes(mirror={options.x_mirror}, tickcolor={options.x_colour}, tickformat='{options.x_tick_format}', ticksuffix='{options.x_tick_suffix}', tickprefix='{options.x_tick_prefix}', col={options.col}, row={options.row})\n")
     plotScript.write(f"fig.update_yaxes(autorange={options.y_autorange}, col={options.col}, row={options.row}, secondary_y={options.y_secondary})\n")
     plotScript.write(f"fig.update_xaxes(autorange={options.x_autorange}, col={options.col}, row={options.row})\n")
     if options.y_range_from is not None or options.y_range_to is not None:
@@ -2465,10 +2540,8 @@ fig.add_trace(go.Violin(
         plotScript.write(f"fig.update_xaxes(range=[{options.x_range_from}, {options.x_range_to}], col={options.col}, row={options.row})\n")
     plotScript.write(f"# fig.update_yaxes(range=[{plotRange[0]['min']}, {plotRange[0]['max']}], col={options.col}, row={options.row}, secondary_y={options.y_secondary})\n")
     plotScript.write(f"# fig.update_xaxes(range=[{plotRange[1]['min']}, {plotRange[1]['max']}], col={options.col}, row={options.row})\n")
-    plotScript.write(f"fig.update_yaxes(tickmode='{options.y_tickmode}', ticks='{options.y_ticks}', nticks={options.y_nticks}, tick0='{options.y_tick0}', dtick='{options.y_dtick}', tickvals={options.y_tickvals}, ticktext={options.y_ticktext}, tickangle={options.y_tickangle}, col={options.col}, row={options.row}, secondary_y={options.y_secondary})\n")
-    plotScript.write(f"fig.update_xaxes(tickmode='{options.x_tickmode}', ticks='{options.x_ticks}', nticks={options.x_nticks}, tick0='{options.x_tick0}', dtick='{options.x_dtick}', tickvals={options.x_tickvals}, ticktext={options.x_ticktext}, tickangle={options.x_tickangle}, col={options.col}, row={options.row})\n")
-    plotScript.write(f"{'# ' if not options.y_tick_hide else ''}fig.update_yaxes(showticklabels=False, col={options.col}, row={options.row}, secondary_y={options.y_secondary})\n")
-    plotScript.write(f"{'# ' if not options.x_tick_hide else ''}fig.update_xaxes(showticklabels=False, col={options.col}, row={options.row})\n")
+    plotScript.write(f"fig.update_yaxes(tickmode='{options.y_tickmode}', ticks='{options.y_ticks}', nticks={options.y_nticks}, tick0={options.y_tick0}, dtick={options.y_dtick}, tickvals={options.y_tickvals}, ticktext={options.y_ticktext}, tickangle={options.y_tickangle}, col={options.col}, row={options.row}, secondary_y={options.y_secondary})\n")
+    plotScript.write(f"fig.update_xaxes(tickmode='{options.x_tickmode}', ticks='{options.x_ticks}', nticks={options.x_nticks}, tick0={options.x_tick0}, dtick={options.x_dtick}, tickvals={options.x_tickvals}, ticktext={options.x_ticktext}, tickangle={options.x_tickangle}, col={options.col}, row={options.row})\n")
     plotScript.write("\n")
 
 if violinMode.endswith('halfgroup'):
