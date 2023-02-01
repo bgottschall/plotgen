@@ -43,7 +43,7 @@ import scipy.cluster.hierarchy
 import scipy.spatial.distance
 
 __prog__ = 'plotgen'
-__version__ = '0.7.5'
+__version__ = '0.7.6'
 __url__ = 'https://github.com/bgottschall/plotgen'
 
 
@@ -1797,8 +1797,10 @@ for input in args.input:
             continue
         inputOptions.frameCount += 1
         inputOptions.traceCount += len([x for x in frame.columns if str(x) not in inputOptions.traceSpecialColumns and str(x) not in inputOptions.frameSpecialColumns])
+        frame = DataframeActions.parseRowIdsToFloat(DataframeActions.parseColumnIdsToFloat(frame, ['index']), ['columns'])
         frame = frame.replace([numpy.inf, -numpy.inf], numpy.nan)
         frame = frame.where(pandas.notnull(frame), None)
+
         inputFrames[_index] = (options, frame)
 
     if inputOptions.frameCount == 0:
