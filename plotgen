@@ -43,7 +43,7 @@ import scipy.cluster.hierarchy
 import scipy.spatial.distance
 
 __prog__ = 'plotgen'
-__version__ = '0.7.6'
+__version__ = '0.7.7'
 __url__ = 'https://github.com/bgottschall/plotgen'
 
 
