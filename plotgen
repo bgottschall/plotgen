@@ -41,9 +41,13 @@ import seaborn
 import plotly.figure_factory
 import scipy.cluster.hierarchy
 import scipy.spatial.distance
+import multiprocessing
+
+# FUTURE: pyarrow
+# import csv.Sniffer
 
 __prog__ = 'plotgen'
-__version__ = '0.7.7'
+__version__ = '0.7.8'
 __url__ = 'https://github.com/bgottschall/plotgen'
 
 
@@ -295,6 +299,8 @@ class DataframeActions:
         'soloComputeFunctions': ['sum', 'mean', 'median', 'std', 'var', 'count', 'skew', 'mad', 'min', 'max']
     }
 
+    floatTransformer = lambda x: float(x) if isFloat(x) else numpy.nan if str(x).lower() in considerAsNaN else x
+
     conditions = ['=', '!=', '<', '>', '<=', '>=', 'in', 'notin', 'xor', 'nor', 'and', 'nand']
 
     def filterFunction(frame, data, mode, quiet=False):
@@ -398,14 +404,13 @@ class DataframeActions:
       return DataframeActions.parseColumnIdsToString(dataframe.T, ['index' if r == 'columns' else r for r in rowIds]).T
 
     def parseColumnIdsToFloat(dataframe, columnIds):
-      transformer = lambda x: float(x) if isFloat(x) else (numpy.nan if isinstance(x, str) and x.lower() in considerAsNaN else x)
       if not isinstance(columnIds, list):
         columnIds = [columnIds]
       if 'index' in columnIds:
-        dataframe.index = dataframe.index.map(transformer)
+        dataframe.index = dataframe.index.map(DataframeActions.floatTransformer)
         columnIds = [c for c in columnIds if c != 'index']
       if len(columnIds) > 0:
-        dataframe = dataframe.iloc[:, columnIds].applymap(transformer)
+        dataframe = dataframe.iloc[:, columnIds].applymap(DataframeActions.floatTransformer)
       return dataframe
 
     def parseRowIdsToFloat(dataframe, rowIds):
@@ -423,13 +428,15 @@ class DataframeActions:
         return DataframeActions.parseColumnIdsToString(dataframe.set_index(pandas.Index(dataframe.iloc[:, colIdx], name=dataframe.columns[colIdx])), ['index'])
 
     def renameColumns(dataframe, columnIds, names):
-        lColumns = dataframe.columns.tolist()
-        for i, columnId in enumerate(columnIds):
-            if i >= len(names) or i >= len(lColumns):
-                break
-            lColumns[columnId] = float(names[i]) if isFloat(names[i]) else names[i]
-        dataframe.columns = lColumns
-        return dataframe
+      lColumns = dataframe.columns.tolist()
+      nColumns = dataframe.columns.name
+      for i, columnId in enumerate(columnIds):
+        if i >= len(names) or i >= len(lColumns):
+          break
+        lColumns[columnId] = float(names[i]) if isFloat(names[i]) else names[i]
+      dataframe.columns = lColumns
+      dataframe.columns.name = nColumns
+      return dataframe
 
     def renameRows(dataframe, rowIds, names):
       return DataframeActions.renameColumns(dataframe.T, rowIds, names).T
@@ -609,7 +616,7 @@ class DataframeActions:
                             for applyColumnIdx in applyColumnIds:
                                 dataframe.iloc[:, targetColumnIdx] = dataframe.iloc[:, targetColumnIdx].astype(str).str.cat(dataframe.iloc[:, applyColumnIdx].astype(str), join='right', sep=str(functionParams[0]) if len(functionParams) > 0 else '').apply(pandas.to_numeric, errors='ignore')
                     elif functionName == 'copy':
-                        if len(applyColumnIds) > 0 and not args.quiet:
+                        if len(applyColumnIds) > 0 and not quiet:
                             print('WARNING: only the last column/row has an effect with apply function copy!', file=sys.stderr)
                         dataframe.iloc[:, targetColumnIds] = dataframe.iloc[:, targetColumnIds].apply(lambda _: dataframe.iloc[:, applyColumnIds[-1]], axis=0).values
                     elif functionName in ['min', 'max']:
@@ -625,7 +632,7 @@ class DataframeActions:
     def addRow(dataframe, name, function=['mean'], where='back'):
       return DataframeActions.addColumn(dataframe.T, name, function, where).T
 
-    def addColumn(dataframe, name, function='mean', where='back'):
+    def addColumn(dataframe, name, function=['mean'], where='back'):
       functionName = function[0]
       functionParams = [numpy.nan if x in considerAsNaN else int(x) if str(x).isdigit() else float(x) if isFloat(x) else x for x in function[1:]]
       if functionName == 'set':
@@ -636,6 +643,28 @@ class DataframeActions:
         newCol = getattr(dataframe.apply(pandas.to_numeric, errors='coerce'), functionName)(axis=1)
         newCol.name = name
       return pandas.concat([dataframe, newCol], axis=1) if where == 'back' else pandas.concat([newCol, dataframe], axis=1)
+
+    def groupNColumns(dataframe, n, function=['sum'], quiet=False):
+      return DataframeActions.groupNRows(dataframe.T, n, quiet).T
+
+    def groupNRows(dataframe, n, function=['sum'], quiet=False):
+      function = function[0]
+      treatIndexAsFloat = False
+      indexName = dataframe.index.name
+      index = None
+      if all(isFloat(x) or x is numpy.nan for x in map(DataframeActions.floatTransformer, dataframe.index)):
+        treatIndexAsFloat = True
+        dataframe = DataframeActions.resetIndex(dataframe)
+      else:
+        print('WARNING: grouping n rows/columns with a non-numerical index will use a interpolated version', file=sys.stderr)
+        index = dataframe.index
+      dataframe = getattr(dataframe.groupby(numpy.arange(len(dataframe.index)) // n, axis=0), function)()
+      if treatIndexAsFloat:
+        dataframe = DataframeActions.dropColumnsByIds(DataframeActions.setIndexColumnByIdx(dataframe, 0), [0])
+      else:
+        dataframe.index = index[::n]
+      dataframe.index.name = indexName
+      return dataframe
 
     def groupAllColumns(dataframe, columnName, function=['sum']):
       return DataframeActions.groupAllRows(dataframe.T, columnName, function).T
@@ -768,7 +797,7 @@ class DataframeActions:
             print(dataframe)
         print(pSep)
 
-    def framesToCSV(dataframes, filenames=['stdout'], separator=None, quiet=False, precision=None):
+    def framesToCSV(dataframes, filenames=['stdout'], separator=None, quiet=False, threads=0, precision=None):
         created = []
         if len(filenames) < len(dataframes):
             filenames = filenames + ([filenames[-1]] * (len(dataframes) - len(filenames)))
@@ -778,7 +807,7 @@ class DataframeActions:
                 sep = '\t'
             elif filename.endswith('.csv'):
                 sep = ';'
-            fFile = sys.stdout if filename == 'stdout' else sys.stderr if filename == 'stderr' else xopen.xopen(filename, 'w' if filename not in created else 'a')
+            fFile = sys.stdout if filename == 'stdout' else sys.stderr if filename == 'stderr' else xopen.xopen(filename, 'w' if filename not in created else 'a', threads=threads)
             created.append(filename)
             frame.to_csv(fFile, sep=sep, na_rep='NaN', float_format=None if precision is None else f'%.{precision}f')
             if (fFile != sys.stdout and fFile != sys.stdout):
@@ -786,8 +815,8 @@ class DataframeActions:
             if not quiet and not fFile == sys.stdout:
                 print(f'Frame {_index + 1}/{len(dataframes)} saved to {filename}')
 
-    def framesToPickle(dataframes, filename, quiet=False):
-        fFile = sys.stdout.buffer if filename == 'stdout' else sys.stderr.buffer if filename == 'stderr' else xopen.xopen(filename, 'wb')
+    def framesToPickle(dataframes, filename, quiet=False, threads=0):
+        fFile = sys.stdout.buffer if filename == 'stdout' else sys.stderr.buffer if filename == 'stderr' else xopen.xopen(filename, 'wb', threads=threads)
         pickle.dump(dataframes, fFile, pickle.HIGHEST_PROTOCOL)
         if not quiet and not fFile == sys.stdout.buffer:
             print(f'Dataframes saved to {filename}')
@@ -813,6 +842,7 @@ parserFileOptions.add_argument("--comment", help="ignores lines starting with (d
 parserFileOptions.add_argument("--delimiter", help="data delimiter (auto detected by default)", type=str, default=None, sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--no-columns", help="do not use a column row", default=False, sticky_default=True, nargs=0, sub_action="store_true", action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--no-index", help="do not use a index column", default=False, sticky_default=True, nargs=0, sub_action="store_true", action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--threads", help="number of threads to decompress files", default=multiprocessing.cpu_count(), type=int, choices=Range(0, None), action=ChildAction, parent=inputFileArgument)
 
 
 parserFileOptions.add_argument("--index-icolumn", help="set index column by index", type=int, sticky_default=True, choices=Range(None, None), default=None, action=ChildAction, parent=inputFileArgument)
@@ -878,6 +908,9 @@ parserFileOptions.add_argument("--group-by-rows", help="group by these row names
 
 parserFileOptions.add_argument("--group-to-column", help="group all columns into a single one", type=str, default=None, sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--group-to-row", help="group all rows into a single one", type=str, default=None, sticky_default=True, action=ChildAction, parent=inputFileArgument)
+
+parserFileOptions.add_argument("--group-n-columns", help="group n columns together", type=int, choices=Range(2, None), sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--group-n-rows", help="group n rows together", type=int, choices=Range(2, None), sticky_default=True, action=ChildAction, parent=inputFileArgument)
 
 parserFileOptions.add_argument("--stack-icolumn", help="stack this column index (or slice, or frame index)", type=SliceType({'index': 'index', **defaultSliceTypeTranslator}), default=None, sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--stack-column", help="stack this column name", type=str, default=None, sticky_default=True, action=ChildAction, parent=inputFileArgument)
@@ -1320,6 +1353,8 @@ for input in args.input:
     inputOptions.frameIndex = 0
     inputFrames = []
     for filename in inputFileNames:
+        buf = None
+
         if filename == 'stdin' and os.path.exists(filename) and not args.quiet:
             print("WARNING: reading in a file called 'stdin' instead of standard input")
 
@@ -1339,7 +1374,7 @@ for input in args.input:
                del stdinBuf
                stdinBuf = None
         else:
-            buf = xopen.xopen(filename, mode='rb').read()
+            buf = xopen.xopen(filename, mode='rb', threads=inputOptions.threads).read()
 
         try:
             frame = pickle.loads(buf)
@@ -1372,15 +1407,27 @@ for input in args.input:
                 inputFrames.append((options, frame))
         else:
             # Do not use pandas own comment option, as we only want to exclude lines that start with a comment character to allow it in the data
-            if len(options.comment) > 0:
-                buf = b''.join([line for line in io.BytesIO(buf).readlines() if not line.decode().strip(' ').startswith(options.comment)])
+            if options.comment is not None and len(options.comment) > 0:
+              if args.debug:
+                print("DEBUG: parsing out comments", file=sys.stderr)
+              buf = b''.join([line for line in io.BytesIO(buf).readlines() if not line.decode().strip(' ').startswith(options.comment)])
+
+            if args.debug:
+              print("DEBUG: parsing csv data", file=sys.stderr)
+
+            useDelimiter = options.delimiter
+            # FUTURE: pyarrow
+            # useDelimiter = options.delimiter if options.delimiter is not None else csv.Sniffer().sniff(io.BytesIO(buf).read(4096).decode()).delimiter
 
             frame = pandas.read_csv(io.BytesIO(buf),
-                                    sep=options.delimiter,
+                                    sep=useDelimiter,
                                     header=None,
                                     index_col=0 if not options.no_index else None,
                                     dtype=object,
-                                    engine='python')
+                                    engine='python'
+                                    # FUTURE: pyarrow
+                                    # engine='pyarrow'
+                    )
 
             if (not options.no_index):
                 frame.index.name = frame.iloc[0].name
@@ -1390,15 +1437,17 @@ for input in args.input:
                 frame.columns.name = None
                 frame = DataframeActions.dropRowsByIds(frame, [0])
 
+            if args.debug:
+              print("DEBUG: parsing number formats", file=sys.stderr)
+            # Relatively slow, though I don't see a way around it
             frame = frame.apply(pandas.to_numeric, errors='ignore')
-            frame = frame.applymap(lambda x: float(x) if isFloat(x) else numpy.nan if isinstance(x, str) and x.lower() in considerAsNaN else x)
+            frame = frame.applymap(DataframeActions.floatTransformer)
 
             frame = DataframeActions.parseColumnIdsToString(frame, ['index'])
             frame = DataframeActions.parseRowIdsToString(frame, ['columns'])
 
             options.frameCount = 1
             options.frameIndex = inputOptions.frameCount
-            frame = frame.fillna(value=numpy.nan)
             inputFrames.append((options, frame))
             inputOptions.frameCount += 1
 
@@ -1628,6 +1677,10 @@ for input in args.input:
                   frame = DataframeActions.groupAllColumns(frame, optionValue, groupFunction)
                 elif optionName == 'group_to_row':
                     frame = DataframeActions.groupAllRows(frame, optionValue, groupFunction)
+                elif optionName == 'group_n_columns':
+                  frame = DataframeActions.groupNColumns(frame, optionValue, groupFunction, args.quiet)
+                elif optionName == 'group_n_rows':
+                    frame = DataframeActions.groupNRows(frame, optionValue, groupFunction, args.quiet)
                 elif optionName in ['stack_irow', 'stack_row', 'unstack_irow', 'unstack_row']:
                   if optionName.endswith('irow'):
                     rowIds = ['columns'] if optionValue == 'columns' else DataframeActions.sliceToRowIds(frame, optionValue)
@@ -1750,10 +1803,10 @@ for input in args.input:
               inputFrames = frontDefocusedFrames + [(newOptions, joinedFrame)] + backDefocusedFrames
               focusedFrames = [len(frontDefocusedFrames)]
             elif optionName == 'file':
-                DataframeActions.framesToCSV([frame for (_, frame) in [inputFrames[x] for x in focusedFrames]], optionValue, inputOptions.delimiter, args.quiet, outputPrecision)
+                DataframeActions.framesToCSV([frame for (_, frame) in [inputFrames[x] for x in focusedFrames]], optionValue, inputOptions.delimiter, args.quiet, inputOptions.threads, outputPrecision)
                 doneSomething = True
             elif optionName == 'pickle':
-                DataframeActions.framesToPickle([frame for (_, frame) in [inputFrames[x] for x in focusedFrames]], optionValue, args.quiet)
+                DataframeActions.framesToPickle([frame for (_, frame) in [inputFrames[x] for x in focusedFrames]], optionValue, args.quiet, inputOptions.threads)
                 doneSomething = True
             elif optionName in ['split_column', 'split_icolumn', 'split_row', 'split_irow']:
                 newInputFrames = []

@@ -26,7 +26,7 @@ setup(
        'argcomplete>=1.12.3', 
        'plotly>=5.1.0', 
        'numpy>=1.21.1', 
-       'pandas>=1.3.1', 
+       'pandas>=1.4.0', 
        'xopen>=1.7.0', 
        'kaleido>=0.2.1', 
        'seaborn>=0.11.1'
