@@ -1031,8 +1031,8 @@ parserPlotAxisOptions.add_argument("--y-title-standoff", help="added margin betw
 parserPlotAxisOptions.add_argument("--x-title-standoff", help="added margin between tick labels and x-title in px", choices=Range(0,), default=None, sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserPlotAxisOptions.add_argument("--y-type", help="choose type for y-axis (default %(default)s)", choices=['-', 'linear', 'log', 'date', 'category'], default='-', action=ChildAction, parent=inputFileArgument)
 parserPlotAxisOptions.add_argument("--x-type", help="choose type for x-axis (default %(default)s)", choices=['-', 'linear', 'log', 'date', 'category'], default='-', action=ChildAction, parent=inputFileArgument)
-parserPlotAxisOptions.add_argument("--y-hide", help="hide y-axis", default=False, sticky_default=True, nargs=0, sub_action="store_true", action=ChildAction, parent=inputFileArgument)
-parserPlotAxisOptions.add_argument("--x-hide", help="hide x-axis", default=False, sticky_default=True, nargs=0, sub_action="store_true", action=ChildAction, parent=inputFileArgument)
+parserPlotAxisOptions.add_argument("--y-show", help="show y-axis (default %(default)s)", default='auto', sticky_default=True, choices=['on', 'off', 'auto'], action=ChildAction, parent=inputFileArgument)
+parserPlotAxisOptions.add_argument("--x-show", help="show x-axis (default %(default)s)", default='auto', sticky_default=True, choices=['on', 'off', 'auto'], action=ChildAction, parent=inputFileArgument)
 parserPlotAxisOptions.add_argument("--x-autorange", help="choose autorange mode for x-axis (default %(default)s)", choices=['on', 'off', 'reversed'], default='on', action=ChildAction, parent=inputFileArgument)
 parserPlotAxisOptions.add_argument("--y-autorange", help="choose autorange mode for y-axis (default %(default)s)", choices=['on', 'off', 'reversed'], default='on', action=ChildAction, parent=inputFileArgument)
 parserPlotAxisOptions.add_argument("--y-range-mode", help="choose range mode for x-axis (default %(default)s)", choices=['normal', 'tozero', 'nonnegative'], default='normal', action=ChildAction, parent=inputFileArgument)
@@ -1069,14 +1069,14 @@ parserPlotAxisOptions.add_argument("--y-colour", help="set y-axis colour", type=
 parserPlotAxisOptions.add_argument("--x-colour", help="set x-axis colour", type=escapedStr, default=None, action=ChildAction, parent=inputFileArgument)
 parserPlotAxisOptions.add_argument("--y-line-width", help="set y-axis line width (default %(default)s)", type=float, choices=Range(0, None), default=0, action=ChildAction, parent=inputFileArgument)
 parserPlotAxisOptions.add_argument("--x-line-width", help="set x-axis line width (default %(default)s)", type=float, choices=Range(0, None), default=0, action=ChildAction, parent=inputFileArgument)
-parserPlotAxisOptions.add_argument("--y-show-grid", help="set the visibility of the y-grid (default %(default)s)", choices=['on', 'off'], default='on', action=ChildAction, parent=inputFileArgument)
-parserPlotAxisOptions.add_argument("--x-show-grid", help="set the visibility of the x-grid (default %(default)s)", choices=['on', 'off'], default='on', action=ChildAction, parent=inputFileArgument)
-parserPlotAxisOptions.add_argument("--y-show-zero-line", help="set the visibility of the y zero line (default %(default)s)", choices=['on', 'off'], default='on', action=ChildAction, parent=inputFileArgument)
-parserPlotAxisOptions.add_argument("--x-show-zero-line", help="set the visibility of the x zero line (default %(default)s)", choices=['on', 'off'], default='on', action=ChildAction, parent=inputFileArgument)
-parserPlotAxisOptions.add_argument("--y-show-tick-labels", help="set the visibility of the y tick labels (default %(default)s)", choices=['on', 'off'], default='on', action=ChildAction, parent=inputFileArgument)
-parserPlotAxisOptions.add_argument("--x-show-tick-labels", help="set the visibility of the x tick labels (default %(default)s)", choices=['on', 'off'], default='on', action=ChildAction, parent=inputFileArgument)
-parserPlotAxisOptions.add_argument("--y-mirror", help="set y axis mirror mode (default %(default)s)", choices=['on', 'ticks', 'off' , 'all', 'allticks'], default='off', action=ChildAction, parent=inputFileArgument)
-parserPlotAxisOptions.add_argument("--x-mirror", help="set x axis mirror mode (default %(default)s)", choices=['on', 'ticks', 'off' , 'all', 'allticks'], default='off', action=ChildAction, parent=inputFileArgument)
+parserPlotAxisOptions.add_argument("--y-show-grid", help="set the visibility of the y-grid (default %(default)s)", choices=['auto', 'on', 'off'], default='auto', action=ChildAction, parent=inputFileArgument)
+parserPlotAxisOptions.add_argument("--x-show-grid", help="set the visibility of the x-grid (default %(default)s)", choices=['auto', 'on', 'off'], default='auto', action=ChildAction, parent=inputFileArgument)
+parserPlotAxisOptions.add_argument("--y-show-zero-line", help="set the visibility of the y zero line (default %(default)s)", choices=['auto', 'on', 'off'], default='auto', action=ChildAction, parent=inputFileArgument)
+parserPlotAxisOptions.add_argument("--x-show-zero-line", help="set the visibility of the x zero line (default %(default)s)", choices=['auto', 'on', 'off'], default='auto', action=ChildAction, parent=inputFileArgument)
+parserPlotAxisOptions.add_argument("--y-show-tick-labels", help="set the visibility of the y tick labels (default %(default)s)", choices=['auto', 'on', 'off'], default='auto', action=ChildAction, parent=inputFileArgument)
+parserPlotAxisOptions.add_argument("--x-show-tick-labels", help="set the visibility of the x tick labels (default %(default)s)", choices=['auto', 'on', 'off'], default='auto', action=ChildAction, parent=inputFileArgument)
+parserPlotAxisOptions.add_argument("--y-mirror", help="set y axis mirror mode (default %(default)s)", choices=['auto', 'on', 'ticks', 'off' , 'all', 'allticks'], default='auto', action=ChildAction, parent=inputFileArgument)
+parserPlotAxisOptions.add_argument("--x-mirror", help="set x axis mirror mode (default %(default)s)", choices=['auto', 'on', 'ticks', 'off' , 'all', 'allticks'], default='auto', action=ChildAction, parent=inputFileArgument)
 
 parserPlotAxisOptions.add_argument("--grid-colour", help="set grid colour", type=escapedStr, default=None, action=ChildAction, parent=inputFileArgument)
 
@@ -1211,6 +1211,7 @@ for input in args.input:
     if options.colour_cycle is None:
         options.colour_cycle = 'global'
 
+
     options.y_grid_colour = f"'{options.y_grid_colour}'" if options.y_grid_colour is not None else f"'{options.grid_colour}'" if options.grid_colour is not None else None
     options.x_grid_colour = f"'{options.x_grid_colour}'" if options.x_grid_colour is not None else f"'{options.grid_colour}'" if options.grid_colour is not None else None
     options.x_colour = f"'{options.y_colour}'" if options.y_colour is not None else None
@@ -1218,23 +1219,21 @@ for input in args.input:
     options.y_line_width_forced = 'y_line_width' in [i for (i, _) in options.ordered_args]
     options.x_line_width_forced = 'x_line_width' in [i for (i, _) in options.ordered_args]
 
-    options.y_range_from = None if options.y_range_from == 'auto' else float(options.y_range_from)
-    options.x_range_from = None if options.x_range_from == 'auto' else float(options.x_range_from)
-    options.y_range_to = None if options.y_range_to == 'auto' else float(options.y_range_to)
-    options.x_range_to = None if options.x_range_to == 'auto' else float(options.x_range_to)
-    options.bar_width = None if options.bar_width == 'auto' else float(options.bar_width)
-    options.bar_shift = None if options.bar_shift == 'auto' else float(options.bar_shift)
-    options.y_tickangle = None if options.y_tickangle == 'auto' else float(options.y_tickangle)
-    options.x_tickangle = None if options.x_tickangle == 'auto' else float(options.x_tickangle)
+    # auto, on or off
+    translate = {'auto': None, 'on': True, 'off': False}
+    for opt in ['y_show_grid', 'x_show_grid', 'y_show', 'x_show', 'y_show_zero_line', 'x_show_zero_line', 'y_show_tick_labels', 'x_show_tick_labels']:
+      setattr(options, opt, translate[getattr(options, opt)])
 
-    options.y_show_grid = True if options.y_show_grid == 'on' else False
-    options.x_show_grid = True if options.x_show_grid == 'on' else False
-    options.y_show_zero_line = True if options.y_show_zero_line == 'on' else False
-    options.x_show_zero_line = True if options.x_show_zero_line == 'on' else False
-    options.y_show_tick_labels = True if options.y_show_tick_labels == 'on' else False
-    options.x_show_tick_labels = True if options.x_show_tick_labels == 'on' else False
-    options.y_mirror = True if options.y_mirror == 'on' else False if options.y_mirror == 'off' else f"'{options.y_mirror}'"
-    options.x_mirror = True if options.x_mirror == 'on' else False if options.x_mirror == 'off' else f"'{options.x_mirror}'"
+    # auto, on, off or string
+    for opt in ['y_mirror', 'x_mirror']:
+      _check = getattr(options, opt)
+      setattr(options, opt, translate[_check] if _check in translate else f"'{_check}'")
+
+    # auto or float value
+    translate = {'auto': None }
+    for opt in ['y_range_from', 'x_range_from', 'y_range_to', 'x_range_to', 'y_tickangle', 'x_tickangle', 'bar_width', 'bar_shift']:
+      _check = getattr(options, opt)
+      setattr(options, opt, translate[_check] if _check in translate else float(_check))
 
     options.y_tick0 = None if options.y_tick0 is None else f"'{options.y_tick0}'"
     options.x_tick0 = None if options.x_tick0 is None else f"'{options.x_tick0}'"
@@ -2264,8 +2263,8 @@ for input in data:
                       data = list(numpy.repeat(data, localExpand))
 
                     if precomputeStats:
-                      ydata = [traceName] if not options.vertical else None
-                      xdata = [traceName] if options.vertical else None
+                      ydata = [col] if not options.vertical else None
+                      xdata = [col] if options.vertical else None
                       stats = [precomputeQ1, precomputeQ2, precomputeQ3, precomputeStd, precomputeLF, precomputeUF, precomputeMean]
                       updateRange(plotRange, [None, stats] if options.vertical else [stats, None])
                     else:
@@ -2569,22 +2568,72 @@ fig.add_trace({sDendrogramTrace}, col={options.col}, row={options.row}, secondar
         options.x_line_width = 1
     plotScript.write("\n\n")
     plotScript.write("# Subplot specific options:\n")
-    plotScript.write(f"fig.update_yaxes(type='{options.y_type}', rangemode='{options.y_range_mode}', automargin={True if options.y_title_standoff is None else False}, title_standoff={options.y_title_standoff}, col={options.col}, row={options.row}, secondary_y={options.y_secondary})\n")
-    plotScript.write(f"fig.update_xaxes(type='{options.x_type}', rangemode='{options.x_range_mode}', automargin={True if options.x_title_standoff is None else False}, title_standoff={options.x_title_standoff}, col={options.col}, row={options.row})\n")
-    plotScript.write(f"fig.update_yaxes(showline={options.y_line_width > 0}, linewidth={options.y_line_width}, linecolor={options.y_colour}, gridcolor={options.y_grid_colour}, col={options.col}, row={options.row}, secondary_y={options.y_secondary})\n")
-    plotScript.write(f"fig.update_xaxes(showline={options.x_line_width > 0}, linewidth={options.x_line_width}, linecolor={options.x_colour}, gridcolor={options.x_grid_colour}, col={options.col}, row={options.row})\n")
-    plotScript.write(f"fig.update_coloraxes(showscale={options.colour_scale == 'show'}, col={options.col}, row={options.row})\n")
-    plotScript.write("# Multi-category options:\n")
-    plotScript.write(f"fig.update_yaxes(showdividers={options.y_line_width > 0}, dividercolor={options.y_colour}, dividerwidth={options.y_line_width}, col={options.col}, row={options.row}, secondary_y={options.y_secondary})\n")
-    plotScript.write(f"fig.update_xaxes(showdividers={options.x_line_width > 0}, dividercolor={options.x_colour}, dividerwidth={options.x_line_width}, col={options.col}, row={options.row})\n")
-    plotScript.write(f"fig.update_yaxes(visible={not options.y_hide}, showticklabels={options.y_show_tick_labels}, showgrid={options.y_show_grid}, zeroline={options.y_show_zero_line}, row={options.row}, col={options.col}, secondary_y={options.y_secondary})\n")
-    plotScript.write(f"fig.update_xaxes(visible={not options.x_hide}, showticklabels={options.x_show_tick_labels}, showgrid={options.x_show_grid}, zeroline={options.x_show_zero_line}, row={options.row}, col={options.col})\n")
-    plotScript.write(f"{'# ' if options.y_title is None else ''}fig.update_yaxes(title_text='{options.y_title}', col={options.col}, row={options.row}, secondary_y={options.y_secondary})\n")
-    plotScript.write(f"{'# ' if options.x_title is None else ''}fig.update_xaxes(title_text='{options.x_title}', col={options.col}, row={options.row})\n")
-    plotScript.write(f"fig.update_yaxes(mirror={options.y_mirror}, tickcolor={options.y_colour}, tickformat='{options.y_tick_format}', ticksuffix='{options.y_tick_suffix}', tickprefix='{options.y_tick_prefix}', col={options.col}, row={options.row}, secondary_y={options.y_secondary})\n")
-    plotScript.write(f"fig.update_xaxes(mirror={options.x_mirror}, tickcolor={options.x_colour}, tickformat='{options.x_tick_format}', ticksuffix='{options.x_tick_suffix}', tickprefix='{options.x_tick_prefix}', col={options.col}, row={options.row})\n")
-    plotScript.write(f"fig.update_yaxes(autorange={options.y_autorange}, col={options.col}, row={options.row}, secondary_y={options.y_secondary})\n")
-    plotScript.write(f"fig.update_xaxes(autorange={options.x_autorange}, col={options.col}, row={options.row})\n")
+    plotScript.write(f"""fig.update_yaxes(
+    {'# ' if options.y_show is None else ''}visible={options.y_show},
+    {'# ' if options.y_show_tick_labels is None else ''}showticklabels={options.y_show_tick_labels},
+    {'# ' if options.y_show_grid is None else ''}showgrid={options.y_show_grid},
+    {'# ' if options.y_show_zero_line is None else ''}zeroline={options.y_show_zero_line},
+    {'# ' if options.y_mirror is None else ''}mirror={options.y_mirror},
+    type='{options.y_type}',
+    rangemode='{options.y_range_mode}',
+    autorange={options.y_autorange},
+    automargin={True if options.y_title_standoff is None else False},
+    {'# ' if options.y_title is None else ''}title_text='{options.y_title}',
+    title_standoff={options.y_title_standoff},
+    tickcolor={options.y_colour},
+    tickformat='{options.y_tick_format}',
+    ticksuffix='{options.y_tick_suffix}',
+    tickprefix='{options.y_tick_prefix}',
+    tickmode='{options.y_tickmode}',
+    ticks='{options.y_ticks}',
+    nticks={options.y_nticks},
+    {'# ' if options.y_tick0 is None else ''}tick0={options.y_tick0},
+    {'# ' if options.y_dtick is None else ''}dtick={options.y_dtick},
+    tickvals={options.y_tickvals},
+    ticktext={options.y_ticktext},
+    tickangle={options.y_tickangle},
+    showline={options.y_line_width > 0},
+    linewidth={options.y_line_width},
+    linecolor={options.y_colour},
+    gridcolor={options.y_grid_colour},
+    showdividers={options.y_line_width > 0},
+    dividercolor={options.y_colour},
+    dividerwidth={options.y_line_width},
+    row={options.row}, col={options.col}, secondary_y={options.y_secondary}
+)\n""")
+    plotScript.write(f"""fig.update_xaxes(
+    {'# ' if options.x_show is None else ''}visible={options.x_show},
+    {'# ' if options.x_show_tick_labels is None else ''}showticklabels={options.x_show_tick_labels},
+    {'# ' if options.x_show_grid is None else ''}showgrid={options.x_show_grid},
+    {'# ' if options.x_show_zero_line is None else ''}zeroline={options.x_show_zero_line},
+    {'# ' if options.x_mirror is None else ''}mirror={options.x_mirror},
+    type='{options.x_type}',
+    rangemode='{options.x_range_mode}',
+    autorange={options.x_autorange},
+    automargin={True if options.x_title_standoff is None else False},
+    {'# ' if options.x_title is None else ''}title_text='{options.x_title}',
+    title_standoff={options.x_title_standoff},
+    tickcolor={options.x_colour},
+    tickformat='{options.x_tick_format}',
+    ticksuffix='{options.x_tick_suffix}',
+    tickprefix='{options.x_tick_prefix}',
+    tickmode='{options.x_tickmode}',
+    ticks='{options.x_ticks}',
+    nticks={options.x_nticks},
+    {'# ' if options.x_tick0 is None else ''}tick0={options.x_tick0},
+    {'# ' if options.x_dtick is None else ''}dtick={options.x_dtick},
+    tickvals={options.x_tickvals},
+    ticktext={options.x_ticktext},
+    tickangle={options.x_tickangle},
+    showline={options.x_line_width > 0},
+    linewidth={options.x_line_width},
+    linecolor={options.x_colour},
+    gridcolor={options.x_grid_colour},
+    showdividers={options.x_line_width > 0},
+    dividercolor={options.x_colour},
+    dividerwidth={options.x_line_width},
+    row={options.row}, col={options.col}
+)\n""")
     if options.y_range_from is not None or options.y_range_to is not None:
         options.y_range_from = options.y_range_from if options.y_range_from is not None else plotRange[1]['min']
         options.y_range_to = options.y_range_to if options.y_range_to is not None else plotRange[1]['max']
@@ -2595,8 +2644,7 @@ fig.add_trace({sDendrogramTrace}, col={options.col}, row={options.row}, secondar
         plotScript.write(f"fig.update_xaxes(range=[{options.x_range_from}, {options.x_range_to}], col={options.col}, row={options.row})\n")
     plotScript.write(f"# fig.update_yaxes(range=[{plotRange[0]['min']}, {plotRange[0]['max']}], col={options.col}, row={options.row}, secondary_y={options.y_secondary})\n")
     plotScript.write(f"# fig.update_xaxes(range=[{plotRange[1]['min']}, {plotRange[1]['max']}], col={options.col}, row={options.row})\n")
-    plotScript.write(f"fig.update_yaxes(tickmode='{options.y_tickmode}', ticks='{options.y_ticks}', nticks={options.y_nticks}, tick0={options.y_tick0}, dtick={options.y_dtick}, tickvals={options.y_tickvals}, ticktext={options.y_ticktext}, tickangle={options.y_tickangle}, col={options.col}, row={options.row}, secondary_y={options.y_secondary})\n")
-    plotScript.write(f"fig.update_xaxes(tickmode='{options.x_tickmode}', ticks='{options.x_ticks}', nticks={options.x_nticks}, tick0={options.x_tick0}, dtick={options.x_dtick}, tickvals={options.x_tickvals}, ticktext={options.x_ticktext}, tickangle={options.x_tickangle}, col={options.col}, row={options.row})\n")
+    plotScript.write(f"fig.update_coloraxes(showscale={options.colour_scale == 'show'}, col={options.col}, row={options.row})\n")
     plotScript.write("\n")
 
 if violinMode.endswith('halfgroup'):
