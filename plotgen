@@ -48,7 +48,7 @@ import multiprocessing
 # import csv.Sniffer
 
 __prog__ = 'plotgen'
-__version__ = '0.7.9'
+__version__ = '0.7.10'
 __url__ = 'https://github.com/bgottschall/plotgen'
 
 
@@ -725,6 +725,7 @@ class DataframeActions:
           dataframe = pandas.DataFrame(kmeans.cluster_centers_, columns=kmeans.feature_names_in_)
           if kmeanParams['samples']:
             dataframe = pandas.concat([pandas.Series(numpy.unique(kmeans.labels_, return_counts=True)[1], name=specialColumnPrefix + 'samples'), dataframe], axis=1)
+          dataframe.index.name = 'cluster'
           return DataframeActions.parseColumnIdsToString(dataframe, ['index'])
         else:
           seen = set()
