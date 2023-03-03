@@ -48,7 +48,7 @@ import multiprocessing
 # import csv.Sniffer
 
 __prog__ = 'plotgen'
-__version__ = '0.7.10'
+__version__ = '0.7.11'
 __url__ = 'https://github.com/bgottschall/plotgen'
 
 
@@ -711,11 +711,7 @@ class DataframeActions:
     def groupByColumnIds(dataframe, columnIds, function=['sum'], specialColumnPrefix='_'):
         functionName = function[0]
         functionParams = function[1:]
-        if not isinstance(columnIds, list):
-            columnIds = [columnIds]
-        if 'index' in columnIds:
-          dataframe = DataframeActions.resetIndex(dataframe)
-          columnIds = [0] + [c + 1 for c in columnIds if c != 'index']
+        columnIds = columnIds if isinstance(columnIds, list) else [columnIds]
 
         if functionName == 'kmeans':
           kmeanParams = DataframeActions.parseKMeansParameters(functionParams)
@@ -1696,10 +1692,18 @@ for input in args.input:
                     targetColumnIds = DataframeActions.getColumnIds(frame, optionValue[1:]) if len(optionValue) > 1 else []
                     frame = DataframeActions.applyOnColumns(frame, applyColumnIds, targetColumnIds, applyFunction, applyMode)
                 elif optionName == 'group_by_irows':
-                    rowIds = DataframeActions.sliceToRowIds(frame, optionValue)
+                    if 'columns' in optionValue:
+                      rowIds = [0] + [x + 1 for x in DataframeActions.sliceToRowIds(frame, [x for x in optionValue if x != 'columns'])]
+                      frame = DataframeActions.resetColumns(frame)
+                    else:
+                      rowIds = DataframeActions.sliceToRowIds(frame, optionValue)
                     frame = DataframeActions.groupByRowIds(frame, rowIds, groupFunction, options.special_column_prefix)
                 elif optionName == 'group_by_icolumns':
-                    columnIds = DataframeActions.sliceToColumnIds(frame, optionValue)
+                    if 'index' in optionValue:
+                      columnIds = [0] + [x + 1 for x in DataframeActions.sliceToColumnIds(frame, [x for x in optionValue if x != 'index'])]
+                      frame = DataframeActions.resetIndex(frame)
+                    else:
+                      columnIds = DataframeActions.sliceToColumnIds(frame, optionValue)
                     frame = DataframeActions.groupByColumnIds(frame, columnIds, groupFunction, options.special_column_prefix)
                 elif optionName == 'group_by_rows':
                     rowIds = DataframeActions.getRowIds(frame, optionValue, selectMode)
