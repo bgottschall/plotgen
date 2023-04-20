@@ -48,7 +48,7 @@ import multiprocessing
 # import csv.Sniffer
 
 __prog__ = 'plotgen'
-__version__ = '0.7.11'
+__version__ = '0.7.12'
 __url__ = 'https://github.com/bgottschall/plotgen'
 
 
@@ -1033,6 +1033,7 @@ parserBarPlotOptions.add_argument("--bar-mode", help="choose barmode (default %(
 parserBarPlotOptions.add_argument("--bar-width", help="set explicit bar width", choices=Range(0, None, ['auto']), default='auto', action=ChildAction, parent=inputFileArgument)
 parserBarPlotOptions.add_argument("--bar-shift", help="set bar shift", choices=Range(None, None, ['auto']), default='auto', action=ChildAction, parent=inputFileArgument)
 parserBarPlotOptions.add_argument("--bar-text-position", help="choose bar text position (default %(default)s)", choices=["inside", "outside", "auto", "none"], default='none', action=ChildAction, parent=inputFileArgument)
+parserBarPlotOptions.add_argument("--bar-text-anchor", help="choose bar inside text anchor (default %(default)s)", choices=["end", "middle", "start"], default='start', action=ChildAction, parent=inputFileArgument)
 parserBarPlotOptions.add_argument("--bar-text-template", help="set bar text template (default %(default)s)", type=escapedStr, default='', action=ChildAction, parent=inputFileArgument)
 parserBarPlotOptions.add_argument("--bar-gap", help="set bar gap (default $(default)s)", choices=Range(0, 1, ['auto']), default='auto')
 parserBarPlotOptions.add_argument("--bar-group-gap", help="set bar group gap (default $(default)s)", choices=Range(0, 1), default=0)
@@ -1279,8 +1280,10 @@ for input in args.input:
     options.y_dtick = None if options.y_dtick is None else f"'{options.y_dtick}'"
     options.x_dtick = None if options.x_dtick is None else f"'{options.x_dtick}'"
 
-    options.y_autorange = f"'{options.y_autorange}'" if options.y_autorange not in ['on', 'off'] else 'False' if options.y_autorange == 'off' or options.y_range_to is not None or options.y_range_from is not None else 'True'
-    options.x_autorange = f"'{options.y_autorange}'" if options.x_autorange not in ['on', 'off'] else 'False' if options.x_autorange == 'off' or options.x_range_to is not None or options.x_range_from is not None else 'True'
+    options.y_autorange = 'off' if options.plot == 'dendrogram' and options.y_autorange is not None and not options.vertical else options.y_autorange
+    options.x_autorange = 'off' if options.plot == 'dendrogram' and options.x_autorange is not None and not options.horizontal else options.x_autorange
+    options.y_autorange = f"'{options.y_autorange}'" if options.y_autorange not in ['on', 'off', None] else False if options.y_autorange == 'off' or options.y_range_to is not None or options.y_range_from is not None else True
+    options.x_autorange = f"'{options.x_autorange}'" if options.x_autorange not in ['on', 'off', None] else False if options.x_autorange == 'off' or options.x_range_to is not None or options.x_range_from is not None else True
 
     if options.legend_entries is None:
         if args.theme != 'palette':
@@ -1952,8 +1955,8 @@ for input in args.input:
     subplotGridDefinition[inputOptions.row][inputOptions.col]['traces'] += inputOptions.traceCount
     subplotGridDefinition[inputOptions.row][inputOptions.col]['frames'] += inputOptions.frameCount
 
-    if inputOptions.plot == 'dendrogram':
-        subplotGridDefinition[inputOptions.row][inputOptions.col]['palette_count'] = 8
+    if inputOptions.plot == 'dendrogram' and subplotGridDefinition[inputOptions.row][inputOptions.col]['palette_count'] is None:
+        subplotGridDefinition[inputOptions.row][inputOptions.col]['palette_count'] = 7
 
     data.append({'options': copy.deepcopy(inputOptions), 'frames': [f.where(pandas.notnull(f), None) for f in [f for i, (_, f) in enumerate(inputFrames) if i in focusedFrames]]})
 
@@ -2405,7 +2408,8 @@ fig.add_trace(go.Bar(
     text={_labels},""")
                     plotScript.write(f"""
     texttemplate='{options.bar_text_template}',
-    textposition='{options.bar_text_position}',""")
+    textposition='{options.bar_text_position}',
+    insidetextanchor='{options.bar_text_anchor}',""")
                     if (_bases is not None):
                         plotScript.write(f"""
     base={_bases},""")
@@ -2559,7 +2563,6 @@ fig.add_trace(go.Heatmap(
                 color_threshold=options.dendrogram_colour_threshold
               )
 
-
               if options.vertical:
                 options.x_show_zero_line = False
                 options.y_show_zero_line = False
@@ -2575,10 +2578,23 @@ fig.add_trace(go.Heatmap(
 
               for dendrogramTrace in dendrogram['data']:
                 updateRange(plotRange, [list(dendrogramTrace['x']), list(dendrogramTrace['y'])] if options.horizontal else [list(dendrogramTrace['y']), list(dendrogramTrace['x'])])
+                dendrogramTrace['line_dash'] = options.line_dash
+                dendrogramTrace['line_width'] = options.line_width
+                dendrogramTrace['opacity'] = options.opacity
                 sDendrogramTrace = f"{dendrogramTrace}".replace('Scatter', 'go.Scatter').replace('array([','[').replace('])',']')
                 plotScript.write(f"""
 fig.add_trace({sDendrogramTrace}, col={options.col}, row={options.row}, secondary_y={options.y_secondary})
               """)
+
+              if options.vertical:
+                correction = (plotRange[1]['max'] - plotRange[1]['min']) * 0.025
+                plotRange[1]['min'] -= correction
+                plotRange[1]['max'] += correction
+              else:
+                correction = (plotRange[0]['max'] - plotRange[0]['min']) * 0.025
+                plotRange[0]['min'] -= correction
+                plotRange[0]['max'] += correction
+
             else:
               raise f'ERROR: unknown plot type {options.plot}'
 
@@ -2680,12 +2696,19 @@ fig.add_trace({sDendrogramTrace}, col={options.col}, row={options.row}, secondar
         options.y_range_from = options.y_range_from if options.y_range_from is not None else plotRange[1]['min']
         options.y_range_to = options.y_range_to if options.y_range_to is not None else plotRange[1]['max']
         plotScript.write(f"fig.update_yaxes(range=[{options.y_range_from}, {options.y_range_to}], col={options.col}, row={options.row}, secondary_y={options.y_secondary})\n")
+    else:
+      if options.y_autorange == 'True':
+        plotScript.write('# ')
+      plotScript.write(f"fig.update_yaxes(range=[{plotRange[0]['min']}, {plotRange[0]['max']}], col={options.col}, row={options.row}, secondary_y={options.y_secondary})\n")
+
     if options.x_range_from is not None or options.x_range_to is not None:
         options.x_range_from = options.x_range_from if options.x_range_from is not None else plotRange[0]['min']
         options.x_range_to = options.x_range_to if options.x_range_to is not None else plotRange[0]['max']
         plotScript.write(f"fig.update_xaxes(range=[{options.x_range_from}, {options.x_range_to}], col={options.col}, row={options.row})\n")
-    plotScript.write(f"# fig.update_yaxes(range=[{plotRange[0]['min']}, {plotRange[0]['max']}], col={options.col}, row={options.row}, secondary_y={options.y_secondary})\n")
-    plotScript.write(f"# fig.update_xaxes(range=[{plotRange[1]['min']}, {plotRange[1]['max']}], col={options.col}, row={options.row})\n")
+    else:
+      if options.x_autorange == 'True':
+        plotScript.write('# ')
+      plotScript.write(f"fig.update_xaxes(range=[{plotRange[1]['min']}, {plotRange[1]['max']}], col={options.col}, row={options.row})\n")
     plotScript.write(f"fig.update_coloraxes(showscale={options.colour_scale == 'show'}, col={options.col}, row={options.row})\n")
     plotScript.write("\n")
 
