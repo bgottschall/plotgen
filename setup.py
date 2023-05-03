@@ -22,6 +22,7 @@ setup(
    keywords='tables graph plot parser plotly',
    python_requires='>=3.7',
    install_requires=[
+       'scikit-learn>=1.2.1',
        'scipy>=1.8.1',
        'argcomplete>=1.12.3', 
        'plotly>=5.1.0', 
