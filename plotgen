@@ -48,7 +48,7 @@ import multiprocessing
 # import csv.Sniffer
 
 __prog__ = 'plotgen'
-__version__ = '0.7.14'
+__version__ = '0.7.15'
 __url__ = 'https://github.com/bgottschall/plotgen'
 
 
@@ -293,7 +293,7 @@ def weightedMeanStd(values, weights = None):
 
 class DataframeActions:
     functions = {
-      'pandasSelfFunctions': ['abs', 'cumsum', 'cummax', 'cummin', 'cumprod', 'rank', 'diff', 'round', 'floor', 'ceil'],
+      'pandasSelfFunctions': ['abs', 'cumsum', 'cummax', 'cummin', 'cumprod', 'rank', 'diff', 'round', 'floor', 'ceil', 'str', 'int', 'float'],
       'specialSelfFunctions': ['set', 'cset', 'polyfit', 'append' , 'prepend', 'ljust', 'rjust', 'cjust', 'kmeans'],
       'amidComputeFunctions': ['add', 'sub', 'mul', 'div', 'truediv', 'floordiv', 'mod', 'pow', 'radd', 'rsub', 'rmul', 'rdiv', 'rtruediv', 'rfloordiv', 'rmod', 'rpow', 'lt', 'gt', 'le', 'ge', 'ne', 'eq', 'min', 'max'],
       'onlyAmidComputeFunctions' : ['concat', 'copy', 'kmeans_labels'],
@@ -322,17 +322,19 @@ class DataframeActions:
       return res
 
     floatTransformer = lambda x: float(x) if isFloat(x) else numpy.nan if str(x).lower() in considerAsNaN else x
+    strTransformer = lambda x: (str(numpy.floor(float(x)).astype(int)) if numpy.floor(float(x)).astype(int) == float(x) else str(float(x))) if isFloat(x) else str(x)
+    intTransformer = lambda x: int(x) if isFloat(x) else numpy.nan if str(x).lower() in considerAsNaN else x
 
     conditions = ['=', '!=', '<', '>', '<=', '>=', 'in', 'notin', 'xor', 'nor', 'and', 'nand']
 
     def filterFunction(frame, data, mode, quiet=False):
         filterMap = {
-            '=': lambda x: any((pandas.isna(x) and pandas.isna(y)) or (float(x) == float(y) if isFloat([x, y]) else x == y) for y in data),
-            '!=': lambda x: all(((pandas.isna(x) != pandas.isna(y)) if (pandas.isna(x) or pandas.isna(y)) else (float(x) != float(y) if isFloat([x, y]) else x != y)) for y in data),
-            '<': lambda x: any(float(x) < float(y) if isFloat([x, y]) else x < y for y in data),
-            '>': lambda x: any(float(x) > float(y) if isFloat([x, y]) else x > y for y in data),
-            '<=': lambda x: any(((pandas.isna(x) and pandas.isna(y)) or float(x) <= float(y) if isFloat([x, y]) else x <= y) for y in data),
-            '>=': lambda x: any(((pandas.isna(x) and pandas.isna(y)) or float(x) >= float(y) if isFloat([x, y]) else x >= y) for y in data),
+            '=': lambda x: any((pandas.isna(x) and pandas.isna(y)) or (float(x) == float(y) if isFloat([x, y]) else str(x) == str(y)) for y in data),
+            '!=': lambda x: all(((pandas.isna(x) != pandas.isna(y)) if (pandas.isna(x) or pandas.isna(y)) else (float(x) != float(y) if isFloat([x, y]) else str(x) != str(y))) for y in data),
+            '<': lambda x: any(float(x) < float(y) if isFloat([x, y]) else str(x) < str(y) for y in data),
+            '>': lambda x: any(float(x) > float(y) if isFloat([x, y]) else str(x) > str(y) for y in data),
+            '<=': lambda x: any(((pandas.isna(x) and pandas.isna(y)) or float(x) <= float(y) if isFloat([x, y]) else str(x) <= str(y)) for y in data),
+            '>=': lambda x: any(((pandas.isna(x) and pandas.isna(y)) or float(x) >= float(y) if isFloat([x, y]) else str(x) >= str(y)) for y in data),
             'in': lambda x: x in data,
             'notin': lambda x: x not in data,
             'xor': lambda x: all(bool(int(y) ^ int(x)) if str(x).isdigit and str(y).isdigit else False for y in data),
@@ -392,10 +394,9 @@ class DataframeActions:
         columns = [columns]
 
       columnIds = []
-      transformer = lambda x: (str(numpy.floor(float(x)).astype(int)) if numpy.floor(float(x)).astype(int) == float(x) else str(float(x))) if isFloat(x) else str(x)
 
       origColumns = map(str, columns)
-      strColumns = map(transformer, columns)
+      strColumns = map(DataframeActions.strTransformer, columns)
       targetColumns = list(enumerate(map(str, dataframe.columns.tolist())))
 
       for origCol, strCol in zip(origColumns, strColumns):
@@ -412,14 +413,13 @@ class DataframeActions:
       return DataframeActions.getColumnIds(dataframe.T, rows, mode, ignore_errors)
 
     def parseColumnIdsToString(dataframe, columnIds):
-      transformer = lambda x: (str(numpy.floor(float(x)).astype(int)) if numpy.floor(float(x)).astype(int) == float(x) else str(float(x))) if isFloat(x) else str(x)
       if not isinstance(columnIds, list):
         columnIds = [columnIds]
       if 'index' in columnIds:
-        dataframe.index = dataframe.index.map(transformer)
+        dataframe.index = dataframe.index.map(DataframeActions.strTransformer)
         columnIds = [c for c in columnIds if c != 'index']
       if len(columnIds) > 0:
-        dataframe = dataframe.iloc[:, columnIds].applymap(transformer)
+        dataframe = dataframe.iloc[:, columnIds].applymap(DataframeActions.strTransformer)
       return dataframe
 
     def parseRowIdsToString(dataframe, rowIds):
@@ -565,6 +565,12 @@ class DataframeActions:
                         if len(functionParams) > 0 and not str(functionParams[0]).isdigit() and not quiet:
                             print('WARNING: round function parameter needs to be an integer', file=sys.stderr)
                         dataframe.iloc[:, applyColumnIds] = dataframe.iloc[:, applyColumnIds].round(decimals).values
+                    elif functionName == 'str':
+                      dataframe.iloc[:, applyColumnIds] = dataframe.iloc[:, applyColumnIds].applymap(DataframeActions.strTransformer)
+                    elif functionName == 'float':
+                      dataframe.iloc[:, applyColumnIds] = dataframe.iloc[:, applyColumnIds].applymap(DataframeActions.floatTransformer)
+                    elif functionName == 'int':
+                      dataframe.iloc[:, applyColumnIds] = dataframe.iloc[:, applyColumnIds].applymap(DataframeActions.intTransformer)
                     else:
                         dataframe.iloc[:, applyColumnIds] = getattr(dataframe.iloc[:, applyColumnIds], functionName)(axis=0).values
                 elif functionName == 'kmeans':
@@ -964,9 +970,9 @@ parserFileOptions.add_argument("--unstack-row", help="stack this row name", type
 parserFileOptions.add_argument("--abs", help="convert all values to absolute values", type=str, default=False, nargs=0, sub_action="store_true", sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--apply-mode", help="apply function from first row or column argument on to the rest or in reverse (default %(default)s)", type=str, default='normal', choices=['normal', 'reverse'], action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--apply-function", help=f'apply this function onto rows or columns or between rows or columns. Only applied on row/column itself -- {{{",".join(DataframeActions.functions["pandasSelfFunctions"] + DataframeActions.functions["specialSelfFunctions"])}}}, applied with parameter on row/column itself or between rows/columns without parameter -- {{{",".join(DataframeActions.functions["amidComputeFunctions"])}}}, only applied between rows/columns -- {{{",".join(DataframeActions.functions["onlyAmidComputeFunctions"])}}}. E.g. --apply-function add 2 --apply-icolumns all (adds 2 to all columns), --apply-function add --apply-icolumns :5 5: (adds the first 5 columns to all columns after the 5th), --apply-function cset = nan 0 --apply-icolumns : (conditional set, sets all NaN values to 0), --apply-function polyfit 2 --apply-icolumn 0 (tries to do a order 2 polynomial fit of the first column), --apply-function concat " -> " --apply-icolumn 0 1 (concatenates the first onto the second column with " -> " as separator), ...', type=str, nargs='+', default=['abs'], action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--apply-icolumns", help="apply function on or between columns by indexes (or slices)", type=SliceType(), default=[], nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--apply-icolumns", help="apply function on or between columns by indexes (or slices)", type=SliceType({'index': 'index', **defaultSliceTypeTranslator}), default=[], nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--apply-columns", help="apply function on or between columns by name", type=str, default=[], nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--apply-irows", help="apply function on or between rows by indexes (or slices)", type=SliceType(), default=[], nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--apply-irows", help="apply function on or between rows by indexes (or slices)", type=SliceType({'columns' : 'columns', **defaultSliceTypeTranslator}), default=[], nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--apply-rows", help="apply function on or between rows by name", type=str, default=[], nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
 
 parserFileOptions.add_argument("--column-names", help="rename columns, start from the first column (e.g. --column-names first second third)", type=str, sticky_default=True, default=[], nargs='+', action=ChildAction, parent=inputFileArgument)
@@ -1679,17 +1685,33 @@ for input in args.input:
                 elif optionName == 'abs':
                     frame = DataframeActions.abs(frame)
                 elif optionName == 'apply_irows':
+                  if 'columns' in optionValue:
+                    applyRowIds = [0] if optionValue[0] == 'columns' else [x + 1 for x in DataframeActions.sliceToRowIds(frame, optionValue[0])]
+                    targetRowIds = [v for lV in [[x + 1 for x in DataframeActions.sliceToRowIds(frame, oV)] if oV != 'columns' else [0] for oV in optionValue[1:]] for v in lV] if len(optionValue) > 1 else []
+                    frame = DataframeActions.resetColumns(frame)
+                  else:
                     applyRowIds = DataframeActions.sliceToRowIds(frame, optionValue[0])
                     targetRowIds = DataframeActions.sliceToRowIds(frame, optionValue[1:]) if len(optionValue) > 1 else []
-                    frame = DataframeActions.applyOnRows(frame, applyRowIds, targetRowIds, applyFunction, applyMode)
+                  frame = DataframeActions.applyOnRows(frame, applyRowIds, targetRowIds, applyFunction, applyMode)
+                  if 'columns' in optionValue:
+                    frame = DataframeActions.setIndexColumnByIdx(frame.T, 0).T
+                    frame = DataframeActions.dropColumnsByIds(frame.T, [0]).T
                 elif optionName == 'apply_rows':
-                    applyRowIds = DataframeActions.getRowIds(frame, optionValue[0])
-                    targetRowIds = DataframeActions.getRowIds(frame, optionValue[1:]) if len(optionValue) > 1 else []
-                    frame = DataframeActions.applyOnRows(frame, applyRowIds, targetRowIds, applyFunction, applyMode)
+                  applyRowIds = DataframeActions.getRowIds(frame, optionValue[0])
+                  targetRowIds = DataframeActions.getRowIds(frame, optionValue[1:]) if len(optionValue) > 1 else []
+                  frame = DataframeActions.applyOnRows(frame, applyRowIds, targetRowIds, applyFunction, applyMode)
                 elif optionName == 'apply_icolumns':
+                  if 'index' in optionValue:
+                    applyColumnIds = [0] if optionValue[0] == 'index' else DataframeActions.sliceToColumnIds(frame, optionValue[0])
+                    targetColumnIds = [v for lV in [[x + 1 for x in DataframeActions.sliceToColumnIds(frame, oV)] if oV != 'index' else [0] for oV in optionValue[1:]] for v in lV] if len(optionValue) > 1 else []
+                    frame = DataframeActions.resetIndex(frame)
+                  else:
                     applyColumnIds = DataframeActions.sliceToColumnIds(frame, optionValue[0])
                     targetColumnIds = DataframeActions.sliceToColumnIds(frame, optionValue[1:]) if len(optionValue) > 1 else []
-                    frame = DataframeActions.applyOnColumns(frame, applyColumnIds, targetColumnIds, applyFunction, applyMode)
+                  frame = DataframeActions.applyOnColumns(frame, applyColumnIds, targetColumnIds, applyFunction, applyMode)
+                  if 'index' in optionValue:
+                    frame = DataframeActions.setIndexColumnByIdx(frame, 0)
+                    frame = DataframeActions.dropColumnsByIds(frame, [0])
                 elif optionName == 'apply_columns':
                     applyColumnIds = DataframeActions.getColumnIds(frame, optionValue[0])
                     targetColumnIds = DataframeActions.getColumnIds(frame, optionValue[1:]) if len(optionValue) > 1 else []
