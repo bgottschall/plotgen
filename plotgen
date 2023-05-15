@@ -300,7 +300,7 @@ class DataframeActions:
       return str(value).lower() in ['nan', 'none', 'null', 'zero', 'nodata']
 
     functions = {
-      'pandasSelfFunctions': ['abs', 'cumsum', 'cummax', 'cummin', 'cumprod', 'rank', 'diff', 'round', 'floor', 'ceil', 'str', 'int', 'float', 'floatstr', 'forceint', 'forcefloat'],
+      'pandasSelfFunctions': ['abs', 'cumsum', 'cummax', 'cummin', 'cumprod', 'rank', 'diff', 'round', 'floor', 'ceil', 'str', 'int', 'float', 'index', 'forceint', 'forcefloat'],
       'specialSelfFunctions': ['set', 'cset', 'polyfit', 'append' , 'prepend', 'ljust', 'rjust', 'cjust', 'kmeans'],
       'amidComputeFunctions': ['add', 'sub', 'mul', 'div', 'truediv', 'floordiv', 'mod', 'pow', 'radd', 'rsub', 'rmul', 'rdiv', 'rtruediv', 'rfloordiv', 'rmod', 'rpow', 'lt', 'gt', 'le', 'ge', 'ne', 'eq', 'min', 'max'],
       'onlyAmidComputeFunctions' : ['concat', 'copy', 'kmeans_labels'],
@@ -332,12 +332,11 @@ class DataframeActions:
     transformers = {
       'identity': lambda x: x,
       'str' : str,
-      'int' : lambda x: numpy.nan if __class__.considerAsNaN(x) or (isFloat(x) and numpy.isnan(float(x))) else int(x) if isFloat(x) else x,
+      'int' : lambda x: numpy.nan if __class__.considerAsNaN(x) or (isFloat(x) and numpy.isnan(float(x))) else int(float(x)) if isFloat(x) else x,
       'float': lambda x: numpy.nan if __class__.considerAsNaN(x) or (isFloat(x) and numpy.isnan(float(x))) else float(x) if isFloat(x) else x,
       'index': lambda x: str(numpy.nan if __class__.considerAsNaN(x) or (isFloat(x) and numpy.isnan(float(x))) else (float(x) if numpy.floor(float(x)).astype(int) != float(x) else numpy.floor(float(x)).astype(int)) if isFloat(x) else x),
-      'floatstr' : lambda x: str(x) if not isFloat(x) else str(float(x)),
       'forcefloat': lambda x: numpy.nan if not isFloat(x) else float(x),
-      'forceint': lambda x: numpy.nan if not isFloat(x) or numpy.isnan(float(x)) else int(x),
+      'forceint': lambda x: numpy.nan if not isFloat(x) or numpy.isnan(float(x)) else int(float(x)),
     }
 
     conditions = ['=', '!=', '<', '>', '<=', '>=', 'in', 'notin', 'xor', 'nor', 'and', 'nand']
@@ -410,8 +409,8 @@ class DataframeActions:
 
       columnIds = []
 
-      origColumns = map(__class__.transformers['str'], columns)
-      strColumns = map(__class__.transformers['floatstr'], columns)
+      origColumns = map(str, columns)
+      strColumns = map(lambda x: str(float(x)) if isFloat(x) else str(x), columns)
       targetColumns = list(enumerate(map(str, dataframe.columns.tolist())))
 
       for origCol, strCol in zip(origColumns, strColumns):
@@ -1687,7 +1686,7 @@ for input in args.input:
                 elif optionName == 'abs':
                     frame = DataframeActions.abs(frame)
                 elif optionName == 'apply_irows':
-                  targetConverts = applyFunction[0] in ['str', 'int', 'float', 'floatstr', 'forceint', 'forcefloat']
+                  targetConverts = applyFunction[0] in ['str', 'int', 'float', 'index', 'forceint', 'forcefloat']
                   if 'columns' in optionValue:
                     applyRowIds = [0] if optionValue[0] == 'columns' else [x + 1 for x in DataframeActions.sliceToRowIds(frame, optionValue[0])]
                     targetRowIds = [v for lV in [[x + 1 for x in DataframeActions.sliceToRowIds(frame, oV)] if oV != 'columns' else [0] for oV in optionValue[1:]] for v in lV] if len(optionValue) > 1 else []
@@ -1703,11 +1702,11 @@ for input in args.input:
                   targetRowIds = DataframeActions.getRowIds(frame, optionValue[1:]) if len(optionValue) > 1 else []
                   frame = DataframeActions.applyOnRows(frame, applyRowIds, targetRowIds, applyFunction, applyMode)
                 elif optionName == 'apply_icolumns':
-                  targetConverts = applyFunction[0] in ['str', 'int', 'float', 'floatstr', 'forceint', 'forcefloat']
+                  targetConverts = applyFunction[0] in ['str', 'int', 'float', 'index', 'forceint', 'forcefloat']
                   if 'index' in optionValue:
                     applyColumnIds = [0] if optionValue[0] == 'index' else DataframeActions.sliceToColumnIds(frame, optionValue[0])
                     targetColumnIds = [v for lV in [[x + 1 for x in DataframeActions.sliceToColumnIds(frame, oV)] if oV != 'index' else [0] for oV in optionValue[1:]] for v in lV] if len(optionValue) > 1 else []
-                    frame = DataframeActions.resetIndex(frame, DataframeActions.transformers['float'] if not targetConveerts else DataframeActions.transformers['identity'])
+                    frame = DataframeActions.resetIndex(frame, DataframeActions.transformers['float'] if not targetConverts else DataframeActions.transformers['identity'])
                   else:
                     applyColumnIds = DataframeActions.sliceToColumnIds(frame, optionValue[0])
                     targetColumnIds = DataframeActions.sliceToColumnIds(frame, optionValue[1:]) if len(optionValue) > 1 else []
