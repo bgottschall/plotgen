@@ -44,11 +44,14 @@ import scipy.spatial.distance
 import sklearn.cluster
 import multiprocessing
 
+# import warnings
+# warnings.filterwarnings('error')
+
 # FUTURE: pyarrow
 # import csv.Sniffer
 
 __prog__ = 'plotgen'
-__version__ = '0.7.15'
+__version__ = '0.7.16'
 __url__ = 'https://github.com/bgottschall/plotgen'
 
 
@@ -292,8 +295,12 @@ def weightedMeanStd(values, weights = None):
   return (mean, numpy.sqrt(variance))
 
 class DataframeActions:
+
+    def considerAsNaN(value):
+      return str(value).lower() in ['nan', 'none', 'null', 'zero', 'nodata']
+
     functions = {
-      'pandasSelfFunctions': ['abs', 'cumsum', 'cummax', 'cummin', 'cumprod', 'rank', 'diff', 'round', 'floor', 'ceil', 'str', 'int', 'float'],
+      'pandasSelfFunctions': ['abs', 'cumsum', 'cummax', 'cummin', 'cumprod', 'rank', 'diff', 'round', 'floor', 'ceil', 'str', 'int', 'float', 'floatstr', 'forceint', 'forcefloat'],
       'specialSelfFunctions': ['set', 'cset', 'polyfit', 'append' , 'prepend', 'ljust', 'rjust', 'cjust', 'kmeans'],
       'amidComputeFunctions': ['add', 'sub', 'mul', 'div', 'truediv', 'floordiv', 'mod', 'pow', 'radd', 'rsub', 'rmul', 'rdiv', 'rtruediv', 'rfloordiv', 'rmod', 'rpow', 'lt', 'gt', 'le', 'ge', 'ne', 'eq', 'min', 'max'],
       'onlyAmidComputeFunctions' : ['concat', 'copy', 'kmeans_labels'],
@@ -321,9 +328,17 @@ class DataframeActions:
       res['samples'] = True if res['samples'].lower() in ['yes', 'true', '1'] else False
       return res
 
-    floatTransformer = lambda x: float(x) if isFloat(x) else numpy.nan if str(x).lower() in considerAsNaN else x
-    strTransformer = lambda x: (str(numpy.floor(float(x)).astype(int)) if numpy.floor(float(x)).astype(int) == float(x) else str(float(x))) if isFloat(x) else str(x)
-    intTransformer = lambda x: int(x) if isFloat(x) else numpy.nan if str(x).lower() in considerAsNaN else x
+
+    transformers = {
+      'identity': lambda x: x,
+      'str' : str,
+      'int' : lambda x: numpy.nan if __class__.considerAsNaN(x) or (isFloat(x) and numpy.isnan(float(x))) else int(x) if isFloat(x) else x,
+      'float': lambda x: numpy.nan if __class__.considerAsNaN(x) or (isFloat(x) and numpy.isnan(float(x))) else float(x) if isFloat(x) else x,
+      'index': lambda x: str(numpy.nan if __class__.considerAsNaN(x) or (isFloat(x) and numpy.isnan(float(x))) else (float(x) if numpy.floor(float(x)).astype(int) != float(x) else numpy.floor(float(x)).astype(int)) if isFloat(x) else x),
+      'floatstr' : lambda x: str(x) if not isFloat(x) else str(float(x)),
+      'forcefloat': lambda x: numpy.nan if not isFloat(x) else float(x),
+      'forceint': lambda x: numpy.nan if not isFloat(x) or numpy.isnan(float(x)) else int(x),
+    }
 
     conditions = ['=', '!=', '<', '>', '<=', '>=', 'in', 'notin', 'xor', 'nor', 'and', 'nand']
 
@@ -382,12 +397,12 @@ class DataframeActions:
       mode = data[0]
       data = [float(x) if isFloat(x) else x for x in data[1:]]
       for columnId in columnIds:
-        mask = [i for (i, x) in enumerate(DataframeActions.filterFunction(dataframe.iloc[:, columnId], data, mode)) if x]
+        mask = [i for (i, x) in enumerate(__class__.filterFunction(dataframe.iloc[:, columnId], data, mode)) if x]
         dataframe = dataframe.iloc[mask, :]
       return dataframe
 
     def filterColumnsByRowData(dataframe, rowIds, data):
-      return DataframeActions.filterRowsByColumnData(dataframe.T, rowIds, data).T
+      return __class__.filterRowsByColumnData(dataframe.T, rowIds, data).T
 
     def getColumnIds(dataframe, columns, mode='all', ignore_errors=False):
       if not isinstance(columns, list):
@@ -395,8 +410,8 @@ class DataframeActions:
 
       columnIds = []
 
-      origColumns = map(str, columns)
-      strColumns = map(DataframeActions.strTransformer, columns)
+      origColumns = map(__class__.transformers['str'], columns)
+      strColumns = map(__class__.transformers['floatstr'], columns)
       targetColumns = list(enumerate(map(str, dataframe.columns.tolist())))
 
       for origCol, strCol in zip(origColumns, strColumns):
@@ -404,50 +419,43 @@ class DataframeActions:
         if len(appendIds) > 0:
           columnIds.extend([appendIds[0]] if mode == 'first' else [appendIds[-1]] if mode == 'last' else appendIds)
         elif isSliceType(origCol):
-          columnIds.extend(DataframeActions.sliceToColumnIds(dataframe, SliceType()(origCol)))
+          columnIds.extend(__class__.sliceToColumnIds(dataframe, SliceType()(origCol)))
         elif not ignore_errors:
           raise Exception(f'Could not find row/column name {origCol}')
       return columnIds
 
     def getRowIds(dataframe, rows, mode='all', ignore_errors=False):
-      return DataframeActions.getColumnIds(dataframe.T, rows, mode, ignore_errors)
+      return __class__.getColumnIds(dataframe.T, rows, mode, ignore_errors)
 
-    def parseColumnIdsToString(dataframe, columnIds):
+    def transformColumnIds(dataframe, columnIds, transformer):
       if not isinstance(columnIds, list):
         columnIds = [columnIds]
       if 'index' in columnIds:
-        dataframe.index = dataframe.index.map(DataframeActions.strTransformer)
+        dataframe.index = dataframe.index.map(transformer)
         columnIds = [c for c in columnIds if c != 'index']
       if len(columnIds) > 0:
-        dataframe = dataframe.iloc[:, columnIds].applymap(DataframeActions.strTransformer)
+        dataframe = dataframe.iloc[:, columnIds].applymap(transformer)
       return dataframe
 
-    def parseRowIdsToString(dataframe, rowIds):
-      return DataframeActions.parseColumnIdsToString(dataframe.T, ['index' if r == 'columns' else r for r in rowIds]).T
+    def transformRowIds(dataframe, rowIds, transformer):
+      return __class__.transformColumnIds(dataframe.T, ['index' if r == 'columns' else r for r in rowIds], transformer).T
 
-    def parseColumnIdsToFloat(dataframe, columnIds):
-      if not isinstance(columnIds, list):
-        columnIds = [columnIds]
-      if 'index' in columnIds:
-        dataframe.index = dataframe.index.map(DataframeActions.floatTransformer)
-        columnIds = [c for c in columnIds if c != 'index']
-      if len(columnIds) > 0:
-        dataframe = dataframe.iloc[:, columnIds].applymap(DataframeActions.floatTransformer)
-      return dataframe
-
-    def parseRowIdsToFloat(dataframe, rowIds):
-      return DataframeActions.parseColumnIdsToFloat(dataframe.T, ['index' if r == 'columns' else r for r in rowIds]).T
-
-    def resetIndex(dataframe):
-      dataframe = DataframeActions.parseColumnIdsToFloat(dataframe, ['index'])
+    # By default all data in the frame tries to be float
+    def resetIndex(dataframe, transformer = None):
+      dataframe = __class__.transformColumnIds(dataframe, ['index'], __class__.transformers['float'] if transformer is None else transformer)
       dataframe.reset_index(inplace=True)
       return dataframe
 
-    def resetColumns(dataframe):
-      return DataframeActions.resetIndex(dataframe.T).T
+    def resetColumns(dataframe, transformer = None):
+      return __class__.resetIndex(dataframe.T, transformer).T
 
-    def setIndexColumnByIdx(dataframe, colIdx):
-        return DataframeActions.parseColumnIdsToString(dataframe.set_index(pandas.Index(dataframe.iloc[:, colIdx], name=dataframe.columns[colIdx])), ['index'])
+    # By default all data in index/columns IS string
+    def setIndexColumnByIdx(dataframe, colIdx, drop = False, transformer = None):
+      dataframe = __class__.transformColumnIds(dataframe.set_index(pandas.Index(dataframe.iloc[:, colIdx], name=dataframe.columns[colIdx])), ['index'], __class__.transformers['index'] if transformer is None else transformer)
+      return dataframe if not drop else __class__.dropColumnsByIds(dataframe, [colIdx])
+
+    def setColumnsRowByIdx(dataframe, rowIdx, drop = False, transformer = None):
+      return __class__.setIndexColumnByIdx(dataframe.T, rowIdx, drop, transformer).T
 
     def renameColumns(dataframe, columnIds, names):
       lColumns = dataframe.columns.tolist()
@@ -461,10 +469,10 @@ class DataframeActions:
       return dataframe
 
     def renameRows(dataframe, rowIds, names):
-      return DataframeActions.renameColumns(dataframe.T, rowIds, names).T
+      return __class__.renameColumns(dataframe.T, rowIds, names).T
 
     def sortRows(dataframe, function=['none'], order='asc'):
-      return DataframeActions.sortColumns(dataframe.T, function, order).T
+      return __class__.sortColumns(dataframe.T, function, order).T
 
     def sortColumns(dataframe, function=['none'], order='asc'):
         functionName = function[0]
@@ -484,7 +492,7 @@ class DataframeActions:
     def sortColumnsByRowIds(dataframe, rowIds, function=['none'], order='asc', quiet=False):
       rowIds = rowIds if isinstance(rowIds, list) else [rowIds]
       rowIds = ['index' if x == 'columns' else x for x in rowIds]
-      return DataframeActions.sortRowsByColumnIds(dataframe.T, rowIds, function, order, quiet).T
+      return __class__.sortRowsByColumnIds(dataframe.T, rowIds, function, order, quiet).T
 
     def sortRowsByColumnIds(dataframe, colIds, function=['none'], order='asc', quiet=False):
         functionName = function[0]
@@ -517,12 +525,12 @@ class DataframeActions:
         return dataframe / constant
 
     def normaliseRows(dataframe, function=['sum']):
-      return DataframeActions.normaliseColumns(dataframe.T, function).T
+      return __class__.normaliseColumns(dataframe.T, function).T
 
     def normaliseColumns(dataframe, function=['sum']):
       functionName = function[0]
 
-      if functionName not in DataframeActions.functions['soloComputeFunctions']:
+      if functionName not in __class__.functions['soloComputeFunctions']:
         raise Exception(f'Normalise function \'{functionName}\' not found!')
 
       normSeries = getattr(dataframe.apply(pandas.to_numeric, errors='coerce'), functionName)(axis=1)
@@ -532,7 +540,7 @@ class DataframeActions:
         return dataframe.abs()
 
     def applyOnRows(dataframe, applyRowIds, targetRowIds=[], function=['abs'], applyMode='normal', quiet=False):
-      return DataframeActions.applyOnColumns(dataframe.T, applyRowIds, targetRowIds, function, applyMode, quiet).T
+      return __class__.applyOnColumns(dataframe.T, applyRowIds, targetRowIds, function, applyMode, quiet).T
 
     def applyOnColumns(dataframe, applyColumnIds, targetColumnIds=[], function=['abs'], applyMode='normal', quiet=False):
         if not isinstance(applyColumnIds, list):
@@ -543,38 +551,34 @@ class DataframeActions:
             function = [function]
 
         functionName = function[0]
-        functionParams = [numpy.nan if x in considerAsNaN else int(x) if str(x).isdigit() else float(x) if isFloat(x) else x for x in function[1:]]
+        functionParams = [numpy.nan if __class__.considerAsNaN(x) else int(x) if str(x).isdigit() else float(x) if isFloat(x) else x for x in function[1:]]
         indexWarning = False
 
-        if functionName not in [x for y in [DataframeActions.functions[x] for x in DataframeActions.functions if x != 'soloComputeFunctions'] for x in y]:
+        if functionName not in [x for y in [__class__.functions[x] for x in __class__.functions if x != 'soloComputeFunctions'] for x in y]:
             raise Exception(f'apply function with name \'{functionName}\' unknown!')
 
         with pandas.option_context('mode.chained_assignment', None):
-            if functionName in DataframeActions.functions['pandasSelfFunctions'] + DataframeActions.functions['specialSelfFunctions'] + (DataframeActions.functions['amidComputeFunctions'] if len(functionParams) > 0 else []):
+            if functionName in __class__.functions['pandasSelfFunctions'] + __class__.functions['specialSelfFunctions'] + (__class__.functions['amidComputeFunctions'] if len(functionParams) > 0 else []):
                 applyColumnIds += targetColumnIds
 
-                if functionName in DataframeActions.functions['pandasSelfFunctions']:
+                if functionName in __class__.functions['pandasSelfFunctions']:
                     if functionName == 'abs':
-                        dataframe.iloc[:, applyColumnIds] = dataframe.iloc[:, applyColumnIds].abs().values
+                      dataframe.iloc[:, applyColumnIds] = dataframe.iloc[:, applyColumnIds].abs().values
                     elif functionName == 'ceil':
-                        dataframe.iloc[:, applyColumnIds] = dataframe.iloc[:, applyColumnIds].apply(numpy.ceil)
+                      dataframe.iloc[:, applyColumnIds] = dataframe.iloc[:, applyColumnIds].apply(numpy.ceil)
                     elif functionName == 'floor':
-                        dataframe.iloc[:, applyColumnIds] = dataframe.iloc[:, applyColumnIds].apply(numpy.floor)
+                      dataframe.iloc[:, applyColumnIds] = dataframe.iloc[:, applyColumnIds].apply(numpy.floor)
                     elif functionName == 'round':
-                        decimals = 0 if len(functionParams) == 0 or not str(functionParams[0]).isdigit() else int(functionParams[0])
-                        if len(functionParams) > 0 and not str(functionParams[0]).isdigit() and not quiet:
-                            print('WARNING: round function parameter needs to be an integer', file=sys.stderr)
-                        dataframe.iloc[:, applyColumnIds] = dataframe.iloc[:, applyColumnIds].round(decimals).values
-                    elif functionName == 'str':
-                      dataframe.iloc[:, applyColumnIds] = dataframe.iloc[:, applyColumnIds].applymap(DataframeActions.strTransformer)
-                    elif functionName == 'float':
-                      dataframe.iloc[:, applyColumnIds] = dataframe.iloc[:, applyColumnIds].applymap(DataframeActions.floatTransformer)
-                    elif functionName == 'int':
-                      dataframe.iloc[:, applyColumnIds] = dataframe.iloc[:, applyColumnIds].applymap(DataframeActions.intTransformer)
+                      decimals = 0 if len(functionParams) == 0 or not str(functionParams[0]).isdigit() else int(functionParams[0])
+                      if len(functionParams) > 0 and not str(functionParams[0]).isdigit() and not quiet:
+                        print('WARNING: round function parameter needs to be an integer', file=sys.stderr)
+                      dataframe.iloc[:, applyColumnIds] = dataframe.iloc[:, applyColumnIds].round(decimals).values
+                    elif functionName in ['str', 'int', 'float', 'forcestr', 'forcefloat', 'forceint']:
+                      dataframe.iloc[:, applyColumnIds] = dataframe.iloc[:, applyColumnIds].applymap(__class__.transformers[functionName])
                     else:
-                        dataframe.iloc[:, applyColumnIds] = getattr(dataframe.iloc[:, applyColumnIds], functionName)(axis=0).values
+                      dataframe.iloc[:, applyColumnIds] = getattr(dataframe.iloc[:, applyColumnIds], functionName)(axis=0).values
                 elif functionName == 'kmeans':
-                  kmeanParams = DataframeActions.parseKMeansParameters(functionParams)
+                  kmeanParams = __class__.parseKMeansParameters(functionParams)
                   kmeans = sklearn.cluster.KMeans(n_clusters=kmeanParams['n_clusters'], init=kmeanParams['init'], n_init=kmeanParams['n_init'], max_iter=kmeanParams['max_iter'], tol=kmeanParams['tol']).fit(dataframe.iloc[:, applyColumnIds].to_numpy())
                   if kmeans.n_iter_ >= kmeanParams['max_iter'] and not quiet:
                     print('WARNING: KMeans algorithm did not reach convergence. Adjust the tol and/or max_iter parameter!', file=sys.stderr)
@@ -595,7 +599,7 @@ class DataframeActions:
                     if len(functionParams) < 3:
                       raise Exception('ERROR: function conditional set requires 3 parameters')
                     for columnId in applyColumnIds:
-                      mask = [i for (i, x) in enumerate(DataframeActions.filterFunction(dataframe.iloc[:, columnId], functionParams[1:-1], functionParams[0])) if x]
+                      mask = [i for (i, x) in enumerate(__class__.filterFunction(dataframe.iloc[:, columnId], functionParams[1:-1], functionParams[0])) if x]
                       if len(mask) > 0:
                         dataframe.iloc[mask, columnId] = functionParams[-1]
                 elif functionName in ['rjust', 'ljust', 'cjust']:
@@ -662,11 +666,11 @@ class DataframeActions:
         return dataframe
 
     def addRow(dataframe, name, function=['mean'], where='back'):
-      return DataframeActions.addColumn(dataframe.T, name, function, where).T
+      return __class__.addColumn(dataframe.T, name, function, where).T
 
     def addColumn(dataframe, name, function=['mean'], where='back'):
       functionName = function[0]
-      functionParams = [numpy.nan if x in considerAsNaN else int(x) if str(x).isdigit() else float(x) if isFloat(x) else x for x in function[1:]]
+      functionParams = [numpy.nan if __class__.considerAsNaN(x) else int(x) if str(x).isdigit() else float(x) if isFloat(x) else x for x in function[1:]]
       if functionName == 'set':
         if len(functionParams) == 0:
           raise Exception('--add-function set requires one parameter as set constant')
@@ -677,7 +681,7 @@ class DataframeActions:
       return pandas.concat([dataframe, newCol], axis=1) if where == 'back' else pandas.concat([newCol, dataframe], axis=1)
 
     def groupNColumns(dataframe, n, function=['sum'], quiet=False):
-      return DataframeActions.groupNRows(dataframe.T, n, quiet).T
+      return __class__.groupNRows(dataframe.T, n, quiet).T
 
     def groupNRows(dataframe, n, function=['sum'], quiet=False):
       functionName = function[0]
@@ -686,22 +690,22 @@ class DataframeActions:
       index = None
       if functionName == 'kmeans':
         raise Exception('grouping n rows/columns is incompatible with the kmeans function')
-      if all(isFloat(x) or x is numpy.nan for x in map(DataframeActions.floatTransformer, dataframe.index)):
+      if all(isFloat(x) or x is numpy.nan for x in map(__class__.transformers['float'], dataframe.index)):
         treatIndexAsFloat = True
-        dataframe = DataframeActions.resetIndex(dataframe)
+        dataframe = __class__.resetIndex(dataframe)
       else:
         print('WARNING: grouping n rows/columns with a non-numerical index will use a interpolated version', file=sys.stderr)
         index = dataframe.index
       dataframe = getattr(dataframe.groupby(numpy.arange(len(dataframe.index)) // n, axis=0), functionName)()
       if treatIndexAsFloat:
-        dataframe = DataframeActions.dropColumnsByIds(DataframeActions.setIndexColumnByIdx(dataframe, 0), [0])
+        dataframe = __class__.setIndexColumnByIdx(dataframe, 0, True)
       else:
         dataframe.index = index[::n]
       dataframe.index.name = indexName
       return dataframe
 
     def groupAllColumns(dataframe, columnName, function=['sum']):
-      return DataframeActions.groupAllRows(dataframe.T, columnName, function).T
+      return __class__.groupAllRows(dataframe.T, columnName, function).T
 
     def groupAllRows(dataframe, rowName, function=['sum']):
       functionName = function[0]
@@ -712,7 +716,7 @@ class DataframeActions:
     def groupByRowIds(dataframe, rowIds, function=['sum'], specialColumnPrefix='_'):
       rowIds = rowIds if isinstance(rowIds, list) else [rowIds]
       rowIds = ['index' if x == 'columns' else x for x in rowIds]
-      return DataframeActions.groupByColumnIds(dataframe.T, rowIds, function, specialColumnPrefix).T
+      return __class__.groupByColumnIds(dataframe.T, rowIds, function, specialColumnPrefix).T
 
     def groupByColumnIds(dataframe, columnIds, function=['sum'], specialColumnPrefix='_'):
         functionName = function[0]
@@ -720,7 +724,7 @@ class DataframeActions:
         columnIds = columnIds if isinstance(columnIds, list) else [columnIds]
 
         if functionName == 'kmeans':
-          kmeanParams = DataframeActions.parseKMeansParameters(functionParams)
+          kmeanParams = __class__.parseKMeansParameters(functionParams)
           kmeans = sklearn.cluster.KMeans(n_clusters=kmeanParams['n_clusters'], init=kmeanParams['init'], n_init=kmeanParams['n_init'], max_iter=kmeanParams['max_iter'], tol=kmeanParams['tol']).fit(dataframe.iloc[:, columnIds])
           if kmeans.n_iter_ >= kmeanParams['max_iter'] and not quiet:
             print('WARNING: KMeans algorithm did not reach convergence. Adjust the tol and/or max_iter parameter!', file=sys.stderr)
@@ -728,7 +732,7 @@ class DataframeActions:
           if kmeanParams['samples']:
             dataframe = pandas.concat([pandas.Series(numpy.unique(kmeans.labels_, return_counts=True)[1], name=specialColumnPrefix + 'samples'), dataframe], axis=1)
           dataframe.index.name = 'cluster'
-          return DataframeActions.parseColumnIdsToString(dataframe, ['index'])
+          return __class__.transformColumnIds(dataframe, ['index'], __class__.transformers['index'])
         else:
           seen = set()
           columnIds = [x for x in columnIds if x not in seen and not seen.add(x)]
@@ -738,7 +742,7 @@ class DataframeActions:
           if len(dataframe.columns) != len(newColumnLabels):
             raise Exception('Grouping dropped "nuisances" columns, and is considered not successful. This is probably due to incompatible data types in columns.')
           dataframe.columns = newColumnLabels
-          return DataframeActions.parseColumnIdsToString(dataframe.set_index(dataframe.iloc[:, 0]).iloc[:, 1:], ['index'])
+          return __class__.transformColumnIds(dataframe.set_index(dataframe.iloc[:, 0]).iloc[:, 1:], ['index'], __class__.transformers['index'])
 
     def stackRowId(dataframe, rowId):
       if rowId == 'columns':
@@ -758,13 +762,13 @@ class DataframeActions:
         dataframe = dataframe.reset_index()
         dataframe = dataframe.set_index(dataframe.iloc[:, 0]).iloc[:, 1:]
         dataframe.index.name = l0Name
-      return DataframeActions.parseColumnIdsToString(DataframeActions.parseRowIdsToString(DataframeActions.parseColumnIdsToFloat(dataframe, list(range(dataframe.shape[1]))), ['columns']), ['index'])
+      return __class__.transformColumnIds(__class__.transformRowIds(__class__.transformColumnIds(dataframe, list(range(dataframe.shape[1])), __class__.transformers['float']), ['columns'], __class__.transformers['index']), ['index'], __class__.transformers['index'])
 
     def stackColumnId(dataframe, columnId):
-      return DataframeActions.stackRowId(dataframe.T, 'columns' if columnId == 'index' else columnId).T
+      return __class__.stackRowId(dataframe.T, 'columns' if columnId == 'index' else columnId).T
 
     def unstackRowId(dataframe, rowId):
-      return DataframeActions.unstackColumnId(dataframe.T, 'index' if rowId == 'columns' else rowId).T
+      return __class__.unstackColumnId(dataframe.T, 'index' if rowId == 'columns' else rowId).T
 
     def unstackColumnId(dataframe, columnId):
       if columnId == 'index':
@@ -778,14 +782,14 @@ class DataframeActions:
         dataframe.columns.name = None
       else:
         l0Name = dataframe.index.name
-        dataframe = DataframeActions.dropColumnsByIds(dataframe.set_index(dataframe.iloc[:, columnId], append=True), [columnId])
+        dataframe = __class__.dropColumnsByIds(dataframe.set_index(dataframe.iloc[:, columnId], append=True), [columnId])
         dataframe = dataframe.unstack(1)
         dataframe = dataframe.to_frame() if not isinstance(dataframe, pandas.DataFrame) else dataframe
         dataframe = dataframe.T.reset_index()
         dataframe = dataframe.set_index(dataframe.iloc[:, 0]).iloc[:, 1:].T
         dataframe.index.name = l0Name
         dataframe.columns.name = None
-      return DataframeActions.parseColumnIdsToString(DataframeActions.parseRowIdsToString(DataframeActions.parseColumnIdsToFloat(dataframe, list(range(dataframe.shape[1]))), ['columns']), ['index'])
+      return __class__.transformColumnIds(__class__.transformRowIds(__class__.transformColumnIds(dataframe, list(range(dataframe.shape[1])), __class__.transformers['float']), ['columns'], __class__.transformers['index']), ['index'], __class__.transformers['index'])
 
     def joinFrames(dataframes, function='index', how='outer'):
       joinedFrame = None
@@ -799,8 +803,8 @@ class DataframeActions:
         for frame in dataframes:
             if rowIdx == 'columns':
                 for v in frame.columns.unique():
-                    columnIds = DataframeActions.getColumnIds(frame, v, 'all', False)
-                    newFrames.append(DataframeActions.selectColumnsByIds(frame, columnIds))
+                    columnIds = __class__.getColumnIds(frame, v, 'all', False)
+                    newFrames.append(__class__.selectColumnsByIds(frame, columnIds))
             else:
                 rowIdx = int(rowIdx)
                 for v in frame.iloc[rowIdx, :].unique():
@@ -815,8 +819,8 @@ class DataframeActions:
         for frame in dataframes:
             if columnIdx == 'index':
                 for v in frame.index.unique():
-                    rowIds = DataframeActions.getRowIds(frame, v, 'all', False)
-                    newFrames.append(DataframeActions.selectRowsByIds(frame, rowIds))
+                    rowIds = __class__.getRowIds(frame, v, 'all', False)
+                    newFrames.append(__class__.selectRowsByIds(frame, rowIds))
             else:
                 columnIdx = int(columnIdx)
                 for v in frame.iloc[:, columnIdx].unique():
@@ -869,9 +873,8 @@ class DataframeActions:
             fFile.close()
 
 
-considerAsNaN = ['nan', 'none', 'null', 'zero', 'nodata']
 
-traceSpecialColumns = ['error', 'error-', 'error+', 'offset', 'label', 'colour', 'sizes']
+traceSpecialColumns = ['error', 'error-', 'error+', 'offset', 'label', 'colour', 'size']
 frameSpecialColumns = ['category']
 allSpecialColumns = traceSpecialColumns + frameSpecialColumns
 
@@ -1446,10 +1449,10 @@ for input in args.input:
                 raise Exception(f'pickle file {filename} is not a pandas data frame!')
             else:
                 frame = frame.apply(pandas.to_numeric, errors='ignore')
-                frame = frame.applymap(lambda x: float(x) if isFloat(x) else numpy.nan if isinstance(x, str) and x.lower() in considerAsNaN else x)
+                frame = frame.applymap(lambda x: float(x) if isFloat(x) else numpy.nan if isinstance(x, str) and x.lower() in DataframeActions.considerAsNaN else x)
 
-                frame = DataframeActions.parseColumnIdsToString(frame, ['index'])
-                frame = DataframeActions.parseRowIdsToString(frame, ['columns'])
+                frame = DataframeActions.transformColumnIds(frame, ['index'], DataframeActions.transformers['index'])
+                frame = DataframeActions.transformRowIds(frame, ['columns'], DataframeActions.transformers['index'])
 
                 inputFrames.append((options, frame))
         else:
@@ -1465,8 +1468,9 @@ for input in args.input:
             useDelimiter = options.delimiter
             # FUTURE: pyarrow
             # useDelimiter = options.delimiter if options.delimiter is not None else csv.Sniffer().sniff(io.BytesIO(buf).read(4096).decode()).delimiter
-
-            frame = pandas.read_csv(io.BytesIO(buf),
+            
+            emptyBuf = len(buf) == 0 or buf == b'\n'
+            frame = pandas.DataFrame() if emptyBuf else pandas.read_csv(io.BytesIO(buf),
                                     sep=useDelimiter,
                                     header=None,
                                     index_col=0 if not options.no_index else None,
@@ -1476,10 +1480,10 @@ for input in args.input:
                                     # engine='pyarrow'
                     )
 
-            if (not options.no_index):
+            if not options.no_index and not emptyBuf:
                 frame.index.name = frame.iloc[0].name
 
-            if (not options.no_columns):
+            if not options.no_columns and not emptyBuf:
                 frame.columns = frame.iloc[0]
                 frame.columns.name = None
                 frame = DataframeActions.dropRowsByIds(frame, [0])
@@ -1488,10 +1492,10 @@ for input in args.input:
               print("DEBUG: parsing number formats", file=sys.stderr)
             # Relatively slow, though I don't see a way around it
             frame = frame.apply(pandas.to_numeric, errors='ignore')
-            frame = frame.applymap(DataframeActions.floatTransformer)
+            frame = frame.applymap(DataframeActions.transformers['float'])
 
-            frame = DataframeActions.parseColumnIdsToString(frame, ['index'])
-            frame = DataframeActions.parseRowIdsToString(frame, ['columns'])
+            frame = DataframeActions.transformColumnIds(frame, ['index'], DataframeActions.transformers['index'])
+            frame = DataframeActions.transformRowIds(frame, ['columns'], DataframeActions.transformers['index'])
 
             options.frameCount = 1
             options.frameIndex = inputOptions.frameCount
@@ -1529,8 +1533,7 @@ for input in args.input:
                         frame = frame.T
                     columnIds = DataframeActions.getColumnIds(frame, optionValue, selectMode)
                     if (len(columnIds) > 0):
-                        frame = DataframeActions.setIndexColumnByIdx(frame, columnIds[0])
-                        frame = DataframeActions.dropColumnsByIds(frame, [columnIds[0]])
+                        frame = DataframeActions.setIndexColumnByIdx(frame, columnIds[0], True)
                     if optionName == 'columns_row':
                         frame = frame.T
                 elif optionName == 'index_icolumn' or optionName == 'columns_irow':
@@ -1538,8 +1541,7 @@ for input in args.input:
                         frame = frame.T
                     columnIds = DataframeActions.sliceToColumnIds(frame, optionValue)
                     if (len(columnIds) > 0):
-                        frame = DataframeActions.setIndexColumnByIdx(frame, columnIds[0])
-                        frame = DataframeActions.dropColumnsByIds(frame, [columnIds[0]])
+                        frame = DataframeActions.setIndexColumnByIdx(frame, columnIds[0], True)
                     if optionName == 'columns_irow':
                         frame = frame.T
                 elif optionName == 'reset_index':
@@ -1589,7 +1591,7 @@ for input in args.input:
                             print('WARNING: filter condition and/or filter data not provided', file=sys.stderr)
                     elif optionValue[0] == 'index':
                         frame = DataframeActions.filterRowsByColumnData(DataframeActions.resetIndex(frame), [0], optionValue[1:])
-                        frame = DataframeActions.dropColumnsByIds(DataframeActions.setIndexColumnByIdx(frame, 0), [0])
+                        frame = DataframeActions.setIndexColumnByIdx(frame, 0, True)
                     else:
                         columnIds = DataframeActions.sliceToColumnIds(frame, SliceType()(optionValue[0]))
                         frame = DataframeActions.filterRowsByColumnData(frame, columnIds, optionValue[1:])
@@ -1612,7 +1614,7 @@ for input in args.input:
                             print('WARNING: filter condition and/or filter data not provided', file=sys.stderr)
                     elif optionValue[0] == 'columns':
                         frame = DataframeActions.filterRowsByColumnData(DataframeActions.resetIndex(frame.T), [0], optionValue[1:])
-                        frame = DataframeActions.dropColumnsByIds(DataframeActions.setIndexColumnByIdx(frame, 0), [0]).T
+                        frame = DataframeActions.setIndexColumnByIdx(frame, 0, True).T
                     else:
                         rowIds = DataframeActions.sliceToRowIds(frame, SliceType()(optionValue[0]))
                         frame = DataframeActions.filterColumnsByRowData(frame, rowIds, optionValue[1:])
@@ -1632,7 +1634,7 @@ for input in args.input:
                       columnIds = DataframeActions.sliceToColumnIds(frame, optionValue)
                     frame = DataframeActions.sortRowsByColumnIds(frame, columnIds, sortFunction, sortOrder)
                     if 'index' in optionValue:
-                      frame = DataframeActions.dropColumnsByIds(DataframeActions.setIndexColumnByIdx(frame, 0), [0])
+                      frame = DataframeActions.setIndexColumnByIdx(frame, 0, True)
                 elif optionName == 'sort_by_irows':
                     if 'columns' in optionValue:
                       rowIds = [v for lv in [[0] if ov == 'columns' else [x + 1 for x in DataframeActions.sliceToRowIds(frame, ov)] for ov in optionValue] for v in lv]
@@ -1641,7 +1643,7 @@ for input in args.input:
                       rowIds = DataframeActions.sliceToRowIds(frame, optionValue)
                     frame = DataframeActions.sortColumnsByRowIds(frame, rowIds, sortFunction, sortOrder)
                     if 'columns' in optionValue:
-                      frame = DataframeActions.dropColumnsByIds(DataframeActions.setIndexColumnByIdx(frame.T, 0), [0]).T
+                      frame = DataframeActions.setColumnsRowByIdx(frame, 0, True)
                 elif optionName == 'sort_by_columns':
                     columnIds = DataframeActions.getColumnIds(frame, optionValue, selectMode)
                     frame = DataframeActions.sortRowsByColumnIds(frame, columnIds, sortFunction, sortOrder)
@@ -1685,33 +1687,33 @@ for input in args.input:
                 elif optionName == 'abs':
                     frame = DataframeActions.abs(frame)
                 elif optionName == 'apply_irows':
+                  targetConverts = applyFunction[0] in ['str', 'int', 'float', 'floatstr', 'forceint', 'forcefloat']
                   if 'columns' in optionValue:
                     applyRowIds = [0] if optionValue[0] == 'columns' else [x + 1 for x in DataframeActions.sliceToRowIds(frame, optionValue[0])]
                     targetRowIds = [v for lV in [[x + 1 for x in DataframeActions.sliceToRowIds(frame, oV)] if oV != 'columns' else [0] for oV in optionValue[1:]] for v in lV] if len(optionValue) > 1 else []
-                    frame = DataframeActions.resetColumns(frame)
+                    frame = DataframeActions.resetColumns(frame, DataframeActions.transformers['float'] if not targetConverts else DataframeActions.transformers['identity'])
                   else:
                     applyRowIds = DataframeActions.sliceToRowIds(frame, optionValue[0])
                     targetRowIds = DataframeActions.sliceToRowIds(frame, optionValue[1:]) if len(optionValue) > 1 else []
                   frame = DataframeActions.applyOnRows(frame, applyRowIds, targetRowIds, applyFunction, applyMode)
                   if 'columns' in optionValue:
-                    frame = DataframeActions.setIndexColumnByIdx(frame.T, 0).T
-                    frame = DataframeActions.dropColumnsByIds(frame.T, [0]).T
+                    frame = DataframeActions.setColumnsRowByIdx(frame, 0, True, DataframeActions.transformers['index'] if not targetConverts else DataframeActions.transformers['str'])
                 elif optionName == 'apply_rows':
                   applyRowIds = DataframeActions.getRowIds(frame, optionValue[0])
                   targetRowIds = DataframeActions.getRowIds(frame, optionValue[1:]) if len(optionValue) > 1 else []
                   frame = DataframeActions.applyOnRows(frame, applyRowIds, targetRowIds, applyFunction, applyMode)
                 elif optionName == 'apply_icolumns':
+                  targetConverts = applyFunction[0] in ['str', 'int', 'float', 'floatstr', 'forceint', 'forcefloat']
                   if 'index' in optionValue:
                     applyColumnIds = [0] if optionValue[0] == 'index' else DataframeActions.sliceToColumnIds(frame, optionValue[0])
                     targetColumnIds = [v for lV in [[x + 1 for x in DataframeActions.sliceToColumnIds(frame, oV)] if oV != 'index' else [0] for oV in optionValue[1:]] for v in lV] if len(optionValue) > 1 else []
-                    frame = DataframeActions.resetIndex(frame)
+                    frame = DataframeActions.resetIndex(frame, DataframeActions.transformers['float'] if not targetConveerts else DataframeActions.transformers['identity'])
                   else:
                     applyColumnIds = DataframeActions.sliceToColumnIds(frame, optionValue[0])
                     targetColumnIds = DataframeActions.sliceToColumnIds(frame, optionValue[1:]) if len(optionValue) > 1 else []
                   frame = DataframeActions.applyOnColumns(frame, applyColumnIds, targetColumnIds, applyFunction, applyMode)
                   if 'index' in optionValue:
-                    frame = DataframeActions.setIndexColumnByIdx(frame, 0)
-                    frame = DataframeActions.dropColumnsByIds(frame, [0])
+                    frame = DataframeActions.setIndexColumnByIdx(frame, 0, True, DataframeActions.transformers['index'] if not targetConverts else DataframeActions.transformers['str'])
                 elif optionName == 'apply_columns':
                     applyColumnIds = DataframeActions.getColumnIds(frame, optionValue[0])
                     targetColumnIds = DataframeActions.getColumnIds(frame, optionValue[1:]) if len(optionValue) > 1 else []
@@ -1913,7 +1915,7 @@ for input in args.input:
             continue
         inputOptions.frameCount += 1
         inputOptions.traceCount += len([x for x in frame.columns if str(x) not in inputOptions.traceSpecialColumns and str(x) not in inputOptions.frameSpecialColumns])
-        frame = DataframeActions.parseRowIdsToFloat(DataframeActions.parseColumnIdsToFloat(frame, ['index']), ['columns'])
+        frame = DataframeActions.transformRowIds(DataframeActions.transformColumnIds(frame, ['index'], DataframeActions.transformers['float']), ['columns'], DataframeActions.transformers['float'])
         frame = frame.replace([numpy.inf, -numpy.inf], numpy.nan)
         frame = frame.where(pandas.notnull(frame), None)
 
@@ -2239,7 +2241,7 @@ for input in data:
                     _bases = [x if (x is not None) else 0 for x in frame.iloc[:, nextColIndex].values.tolist()]
                   elif (nextCol == options.special_column_prefix + 'label') and (_labels is None):
                     _labels = frame.iloc[:, nextColIndex].values.tolist()
-                  elif (nextCol == options.special_column_prefix + 'sizes') and (_sizes is None):
+                  elif (nextCol == options.special_column_prefix + 'size') and (_sizes is None):
                     _sizes = frame.iloc[:, nextColIndex].values.tolist()
                   elif (nextCol == options.special_column_prefix + 'colour') and (_colours is None) and (frameTraceIndex >= len(options.trace_colours)):
                     _colours = frame.iloc[:, nextColIndex].values.tolist()
