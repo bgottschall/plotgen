@@ -523,17 +523,18 @@ class DataframeActions:
     def normaliseToConstant(dataframe, constant):
         return dataframe / constant
 
-    def normaliseRows(dataframe, function=['sum']):
-      return __class__.normaliseColumns(dataframe.T, function).T
+    def normaliseRowIds(dataframe, rowIds, function=['sum']):
+      return __class__.normaliseColumnIds(dataframe.T, rowIds, function).T
 
-    def normaliseColumns(dataframe, function=['sum']):
+    def normaliseColumnIds(dataframe, colIds, function=['sum']):
       functionName = function[0]
 
       if functionName not in __class__.functions['soloComputeFunctions']:
         raise Exception(f'Normalise function \'{functionName}\' not found!')
 
-      normSeries = getattr(dataframe.apply(pandas.to_numeric, errors='coerce'), functionName)(axis=1)
-      return dataframe.div(normSeries, axis=0)
+      normSeries = getattr(dataframe.iloc[:, colIds].apply(pandas.to_numeric, errors='coerce'), functionName)(axis=0)
+      dataframe.iloc[:, colIds] = dataframe.iloc[:, colIds].div(normSeries, axis=1)
+      return dataframe
 
     def abs(dataframe):
         return dataframe.abs()
@@ -572,7 +573,7 @@ class DataframeActions:
                       if len(functionParams) > 0 and not str(functionParams[0]).isdigit() and not quiet:
                         print('WARNING: round function parameter needs to be an integer', file=sys.stderr)
                       dataframe.iloc[:, applyColumnIds] = dataframe.iloc[:, applyColumnIds].round(decimals).values
-                    elif functionName in ['str', 'int', 'float', 'forcestr', 'forcefloat', 'forceint']:
+                    elif functionName in __class__.transformers.keys():
                       dataframe.iloc[:, applyColumnIds] = dataframe.iloc[:, applyColumnIds].applymap(__class__.transformers[functionName])
                     else:
                       dataframe.iloc[:, applyColumnIds] = getattr(dataframe.iloc[:, applyColumnIds], functionName)(axis=0).values
@@ -934,13 +935,16 @@ parserFileOptions.add_argument("--data-scale", help="scales all data by this val
 parserFileOptions.add_argument("--data-offset", help="offsets all data by this value (equivalent to --apply-function add <x> --apply-icolumns :)", type=float, default=0, choices=Range(None, None), sticky_default=True, action=ChildAction, parent=inputFileArgument)
 
 parserFileOptions.add_argument("--normalise-function", help=f"normalise function (default '{DataframeActions.functions['soloComputeFunctions'][0]}')", type=str, default=[DataframeActions.functions['soloComputeFunctions'][0]], nargs='+', choices=DataframeActions.functions['soloComputeFunctions'], sticky_default=True, action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--normalise-columns", help="normalise all columns with selected normalise function", default=False, nargs=0, sub_action="store_true", sticky_default=True, action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--normalise-rows", help="normalise all rows with selected normalise function", default=False, nargs=0, sub_action="store_true", sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--normalise-icolumns", help="normalise these columns by index (or slice) with selected normalise function", type=SliceType(), default=[], nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--normalise-columns", help="normalise these columns with selected normalise function", type=str, default=[], nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--normalise-irows", help="normalise these rows by column index (or slice) with selected normalise function", type=SliceType(), default=[], nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--normalise-rows", help="normalise these rows with selected normalise function", type=str, default=[], nargs='+', sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--normalise-to", help="normalise data to constant (equivalent to --apply-function div <x> --apply-icolumns :)", type=float, default=0, choices=Range(None, None), sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--normalise-to-icolumn", help="normalise all columns to this column by index (or slice)", type=SliceType(), default=None, sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--normalise-to-column", help="normalise all columns to this column by name", type=str, default=None, sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--normalise-to-irow", help="normalise all rows to this row by index (or slice)", type=SliceType(), default=None, sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--normalise-to-row", help="normalise all rows to this row by name", type=str, default=None, sticky_default=True, action=ChildAction, parent=inputFileArgument)
+
 
 parserFileOptions.add_argument("--add-at", help="add rows or columns at the front or back of the frame", type=str, default='back', choices=['front', 'back'], action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--add-function", help=f"use this function to compute new row or column (default '{DataframeActions.functions['soloComputeFunctions'][0]}')", type=str, default=[DataframeActions.functions['soloComputeFunctions'][0]], nargs='+', action=ChildAction, parent=inputFileArgument)
@@ -1651,10 +1655,18 @@ for input in args.input:
                     frame = DataframeActions.sortColumnsByRowIds(frame, rowIds, sortFunction, sortOrder)
                 elif optionName == 'normalise_to':
                     frame = DataframeActions.normaliseToConstant(frame, optionValue)
-                elif optionName == 'normalise_rows':
-                    frame = DataframeActions.normaliseRows(frame, normaliseFunction)
+                elif optionName == 'normalise_icolumns':
+                    applyColumnIds = DataframeActions.sliceToColumnIds(frame, optionValue)
+                    frame = DataframeActions.normaliseColumnIds(frame, applyColumnIds, normaliseFunction)
                 elif optionName == 'normalise_columns':
-                    frame = DataframeActions.normaliseColumns(frame, normaliseFunction)
+                    applyColumnIds = DataframeActions.getColumnIds(frame, optionValue, selectMode)
+                    frame = DataframeActions.normaliseColumnIds(frame, applyColumnIds, normaliseFunction)
+                elif optionName == 'normalise_irows':
+                    applyRowIds = DataframeActions.sliceToRowIds(frame, optionValue)
+                    frame = DataframeActions.normaliseRowIds(frame, applyRowIds, normaliseFunction)
+                elif optionName == 'normalise_rows':
+                    applyRowIds = DataframeActions.getRowIds(frame, optionValue, selectMode)
+                    frame = DataframeActions.normaliseRowIds(frame, applyRowIds, normaliseFunction)
                 elif optionName == 'normalise_to_column':
                     applyColumnIds = DataframeActions.getColumnIds(frame, optionValue, selectMode)
                     if len(applyColumnIds) > 1 and not args.quiet:
@@ -1686,7 +1698,7 @@ for input in args.input:
                 elif optionName == 'abs':
                     frame = DataframeActions.abs(frame)
                 elif optionName == 'apply_irows':
-                  targetConverts = applyFunction[0] in ['str', 'int', 'float', 'index', 'forceint', 'forcefloat']
+                  targetConverts = applyFunction[0] in DataframeActions.transformers.keys()
                   if 'columns' in optionValue:
                     applyRowIds = [0] if optionValue[0] == 'columns' else [x + 1 for x in DataframeActions.sliceToRowIds(frame, optionValue[0])]
                     targetRowIds = [v for lV in [[x + 1 for x in DataframeActions.sliceToRowIds(frame, oV)] if oV != 'columns' else [0] for oV in optionValue[1:]] for v in lV] if len(optionValue) > 1 else []
@@ -1702,7 +1714,7 @@ for input in args.input:
                   targetRowIds = DataframeActions.getRowIds(frame, optionValue[1:]) if len(optionValue) > 1 else []
                   frame = DataframeActions.applyOnRows(frame, applyRowIds, targetRowIds, applyFunction, applyMode)
                 elif optionName == 'apply_icolumns':
-                  targetConverts = applyFunction[0] in ['str', 'int', 'float', 'index', 'forceint', 'forcefloat']
+                  targetConverts = applyFunction[0] in DataframeActions.transformers.keys()
                   if 'index' in optionValue:
                     applyColumnIds = [0] if optionValue[0] == 'index' else DataframeActions.sliceToColumnIds(frame, optionValue[0])
                     targetColumnIds = [v for lV in [[x + 1 for x in DataframeActions.sliceToColumnIds(frame, oV)] if oV != 'index' else [0] for oV in optionValue[1:]] for v in lV] if len(optionValue) > 1 else []
