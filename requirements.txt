@@ -1,7 +1,7 @@
 scikit-learn>=1.2.1
 scipy>=1.8.1
 argcomplete>=1.12.3
-plotly>=5.1.0
+plotly>=5.14.1
 numpy>=1.21.1
 pandas>=1.4.0
 xopen>=1.7.0

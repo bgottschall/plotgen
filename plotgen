@@ -329,6 +329,9 @@ class DataframeActions:
       return res
 
 
+    # Before plotting index and columns MUST BE string, for plotting those can be anything
+    # all other data always tries to be float if not enforced otherwise. Any data from a csv
+    # is always read in as float if possible
     transformers = {
       'identity': lambda x: x,
       'str' : str,
@@ -337,6 +340,7 @@ class DataframeActions:
       'index': lambda x: str(numpy.nan if __class__.considerAsNaN(x) or (isFloat(x) and numpy.isnan(float(x))) else (float(x) if numpy.floor(float(x)).astype(int) != float(x) else numpy.floor(float(x)).astype(int)) if isFloat(x) else x),
       'forcefloat': lambda x: numpy.nan if not isFloat(x) else float(x),
       'forceint': lambda x: numpy.nan if not isFloat(x) or numpy.isnan(float(x)) else int(float(x)),
+      'mixed': lambda x: numpy.nan if __class__.considerAsNaN(x) or (isFloat(x) and numpy.isnan(float(x))) else (float(x) if numpy.floor(float(x)).astype(int) != float(x) else numpy.floor(float(x)).astype(int)) if isFloat(x) else str(x), # nan if nan, float if float, int if int else str
     }
 
     conditions = ['=', '!=', '<', '>', '<=', '>=', 'in', 'notin', 'xor', 'nor', 'and', 'nand']
@@ -439,6 +443,15 @@ class DataframeActions:
     def transformRowIds(dataframe, rowIds, transformer):
       return __class__.transformColumnIds(dataframe.T, ['index' if r == 'columns' else r for r in rowIds], transformer).T
 
+    def dropIndex(dataframe):
+      _name = dataframe.index.name
+      dataframe.reset_index(drop=True, inplace=True)
+      dataframe.index.name = _name
+      return dataframe
+
+    def dropColumns(dataframe):
+      return __class__.dropIndex(dataframe.T).T
+
     # By default all data in the frame tries to be float
     def resetIndex(dataframe, transformer = None):
       dataframe = __class__.transformColumnIds(dataframe, ['index'], __class__.transformers['float'] if transformer is None else transformer)
@@ -450,7 +463,7 @@ class DataframeActions:
 
     # By default all data in index/columns IS string
     def setIndexColumnByIdx(dataframe, colIdx, drop = False, transformer = None):
-      dataframe = __class__.transformColumnIds(dataframe.set_index(pandas.Index(dataframe.iloc[:, colIdx], name=dataframe.columns[colIdx])), ['index'], __class__.transformers['index'] if transformer is None else transformer)
+      dataframe = __class__.transformColumnIds(dataframe.set_index(pandas.Index(dataframe.iloc[:, colIdx], name=dataframe.index.name)), ['index'], __class__.transformers['index'] if transformer is None else transformer)
       return dataframe if not drop else __class__.dropColumnsByIds(dataframe, [colIdx])
 
     def setColumnsRowByIdx(dataframe, rowIdx, drop = False, transformer = None):
@@ -898,7 +911,9 @@ parserFileOptions.add_argument("--index-column", help="set index column by name"
 parserFileOptions.add_argument("--columns-irow", help="set columns row by index", type=int, sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--columns-row", help="set columns row by name", default=None, type=str, sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--reset-index", help="reset index back as first column (will be reinterpreted as float/nan data if possible)", default=False, nargs=0, sub_action="store_true", sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--drop-index", help="drops index", default=False, nargs=0, sub_action="store_true", sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--reset-columns", help="reset columns back as first row (will be reinterpret as float/nan data if possible)", default=False, nargs=0, sub_action="store_true", sticky_default=True, action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--drop-columns", help="drop columns", default=False, nargs=0, sub_action="store_true", sticky_default=True, action=ChildAction, parent=inputFileArgument)
 
 parserFileOptions.add_argument("--select-mode", help="select row/columns policy (default %(default)s)", type=str, default='all', choices=['all', 'first', 'last'], action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--ignore-icolumns", help="ignore column by indexes (or slices)", type=SliceType(), default=[], sticky_default=True, nargs='+', action=ChildAction, parent=inputFileArgument)
@@ -1017,13 +1032,14 @@ parserPlotOptions.add_argument('--row', type=int, choices=Range(1, None), help='
 parserPlotOptions.add_argument('--rowspan', type=int, choices=Range(1, None), help='subplot rowspan (default %(default)s)', default=1, action=ChildAction, parent=inputFileArgument)
 parserPlotOptions.add_argument('--col', type=int, choices=Range(1, None), help='subplot column (default %(default)s)', default=1, action=ChildAction, parent=inputFileArgument)
 parserPlotOptions.add_argument('--colspan', type=int, choices=Range(1, None), help='subplot columnspan (default %(default)s)', default=1, action=ChildAction, parent=inputFileArgument)
+parserPlotOptions.add_argument("--text-template", help="set text template for bar and line plots (default %(default)s)", type=escapedStr, default='', action=ChildAction, parent=inputFileArgument)
 
 parserPlotOptions.add_argument("--category", help="how are category axis shown", default='normal', choices=['none', 'normal', 'reversed'], action=ChildAction, parent=inputFileArgument)
 parserPlotOptions.add_argument("--error", help="show error markers in plot (need to be supplied by data)", default='hide', choices=['show', 'hide'], action=ChildAction, parent=inputFileArgument)
 parserPlotOptions.add_argument("--trace-names", help="set individual trace names", default=[], sticky_default=True, type=escapedStr, nargs='+', action=ChildAction, parent=inputFileArgument)
 parserPlotOptions.add_argument("--trace-colours", help="define explicit trace colours", default=[], nargs='+', type=escapedStr, sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserPlotOptions.add_argument("--line-width", help="set line width (default %(default)s)", type=int, default=1, choices=Range(0,), action=ChildAction, parent=inputFileArgument)
-parserPlotOptions.add_argument("--line-colour", help="set line colour  (default %(default)s) (line charts are using just colour)", type=escapedStr, default='#222222', action=ChildAction, parent=inputFileArgument)
+parserPlotOptions.add_argument("--line-colour", help="set line colour  (default %(default)s) (line charts are using regular colour)", type=escapedStr, default='#222222', action=ChildAction, parent=inputFileArgument)
 parserPlotOptions.add_argument("--opacity", help="colour opacity (default 0.8 for overlay modes, else 1.0)", choices=Range(0, 1, ['auto']), action=ChildAction, parent=inputFileArgument)
 parserPlotOptions.add_argument("--offsetgroups", help="set explicit offsetgroups for e.g. bar charts", type=int, default='auto', nargs='+', choices=Range(0, None, ['auto']), sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserPlotOptions.add_argument("--legend-entries", help="choose which entries are shown in legend", choices=['all', 'unique', 'none'], default=None, action=ChildAction, parent=inputFileArgument)
@@ -1036,8 +1052,10 @@ parserLinePlotOptions.add_argument('--line-fill', choices=['none', 'tozeroy', 't
 parserLinePlotOptions.add_argument('--line-stack', help='stack line input traces (default %(default)s)', default=False, sticky_default=True, nargs=0, sub_action="store_true", action=ChildAction, parent=inputFileArgument)
 parserLinePlotOptions.add_argument('--line-shape', choices=['linear', 'spline', 'hv', 'vh', 'hvh', 'vhv'], help='choose line shape (default %(default)s)', default='linear', action=ChildAction, parent=inputFileArgument)
 parserLinePlotOptions.add_argument('--line-dash', choices=['solid', 'dot', 'dash', 'longdash', 'dashdot', 'longdashdot'], help='choose line dash (default %(default)s)', default='solid', action=ChildAction, parent=inputFileArgument)
-parserLinePlotOptions.add_argument('--line-markers', choices=['circle', 'circle-open', 'circle-dot', 'circle-open-dot', 'square', 'square-open', 'square-dot', 'square-open-dot', 'diamond', 'diamond-open', 'diamond-dot', 'diamond-open-dot', 'cross', 'cross-open', 'cross-dot', 'cross-open-dot', 'x', 'x-open', 'x-dot', 'x-open-dot', 'triangle-up', 'triangle-up-open', 'triangle-up-dot', 'triangle-up-open-dot', 'triangle-down', 'triangle-down-open', 'triangle-down-dot', 'triangle-down-open-dot', 'triangle-left', 'triangle-left-open', 'triangle-left-dot', 'triangle-left-open-dot', 'triangle-right', 'triangle-right-open', 'triangle-right-dot', 'triangle-right-open-dot', 'triangle-ne', 'triangle-ne-open', 'triangle-ne-dot', 'triangle-ne-open-dot', 'triangle-se', 'triangle-se-open', 'triangle-se-dot', 'triangle-se-open-dot', 'triangle-sw', 'triangle-sw-open', 'triangle-sw-dot', 'triangle-sw-open-dot', 'triangle-nw', 'triangle-nw-open', 'triangle-nw-dot', 'triangle-nw-open-dot', 'pentagon', 'pentagon-open', 'pentagon-dot', 'pentagon-open-dot', 'hexagon', 'hexagon-open', 'hexagon-dot', 'hexagon-open-dot', 'hexagon2', 'hexagon2-open', 'hexagon2-dot', 'hexagon2-open-dot', 'octagon', 'octagon-open', 'octagon-dot', 'octagon-open-dot', 'star', 'star-open', 'star-dot', 'star-open-dot', 'hexagram', 'hexagram-open', 'hexagram-dot', 'hexagram-open-dot', 'star-triangle-up', 'star-triangle-up-open', 'star-triangle-up-dot', 'star-triangle-up-open-dot', 'star-triangle-down', 'star-triangle-down-open', 'star-triangle-down-dot', 'star-triangle-down-open-dot', 'star-square', 'star-square-open', 'star-square-dot', 'star-square-open-dot', 'star-diamond', 'star-diamond-open', 'star-diamond-dot', 'star-diamond-open-dot', 'diamond-tall', 'diamond-tall-open', 'diamond-tall-dot', 'diamond-tall-open-dot', 'diamond-wide', 'diamond-wide-open', 'diamond-wide-dot', 'diamond-wide-open-dot', 'hourglass', 'hourglass-open', 'bowtie', 'bowtie-open', 'circle-cross', 'circle-cross-open', 'circle-x', 'circle-x-open', 'square-cross', 'square-cross-open', 'square-x', 'square-x-open', 'diamond-cross', 'diamond-cross-open', 'diamond-x', 'diamond-x-open', 'cross-thin', 'cross-thin-open', 'x-thin', 'x-thin-open', 'asterisk', 'asterisk-open', 'hash', 'hash-open', 'hash-dot', 'hash-open-dot', 'y-up', 'y-up-open', 'y-down', 'y-down-open', 'y-left', 'y-left-open', 'y-right', 'y-right-open', 'line-ew', 'line-ew-open', 'line-ns', 'line-ns-open', 'line-ne', 'line-ne-open', 'line-nw', 'line-nw-open'], help='choose line marker (default circle)', default=[], nargs='+', action=ChildAction, parent=inputFileArgument)
+parserLinePlotOptions.add_argument('--line-markers', choices=['circle', 'circle-open', 'circle-dot', 'circle-open-dot', 'square', 'square-open', 'square-dot', 'square-open-dot', 'diamond', 'diamond-open', 'diamond-dot', 'diamond-open-dot', 'cross', 'cross-open', 'cross-dot', 'cross-open-dot', 'x', 'x-open', 'x-dot', 'x-open-dot', 'triangle-up', 'triangle-up-open', 'triangle-up-dot', 'triangle-up-open-dot', 'triangle-down', 'triangle-down-open', 'triangle-down-dot', 'triangle-down-open-dot', 'triangle-left', 'triangle-left-open', 'triangle-left-dot', 'triangle-left-open-dot', 'triangle-right', 'triangle-right-open', 'triangle-right-dot', 'triangle-right-open-dot', 'triangle-ne', 'triangle-ne-open', 'triangle-ne-dot', 'triangle-ne-open-dot', 'triangle-se', 'triangle-se-open', 'triangle-se-dot', 'triangle-se-open-dot', 'triangle-sw', 'triangle-sw-open', 'triangle-sw-dot', 'triangle-sw-open-dot', 'triangle-nw', 'triangle-nw-open', 'triangle-nw-dot', 'triangle-nw-open-dot', 'pentagon', 'pentagon-open', 'pentagon-dot', 'pentagon-open-dot', 'hexagon', 'hexagon-open', 'hexagon-dot', 'hexagon-open-dot', 'hexagon2', 'hexagon2-open', 'hexagon2-dot', 'hexagon2-open-dot', 'octagon', 'octagon-open', 'octagon-dot', 'octagon-open-dot', 'star', 'star-open', 'star-dot', 'star-open-dot', 'hexagram', 'hexagram-open', 'hexagram-dot', 'hexagram-open-dot', 'star-triangle-up', 'star-triangle-up-open', 'star-triangle-up-dot', 'star-triangle-up-open-dot', 'star-triangle-down', 'star-triangle-down-open', 'star-triangle-down-dot', 'star-triangle-down-open-dot', 'star-square', 'star-square-open', 'star-square-dot', 'star-square-open-dot', 'star-diamond', 'star-diamond-open', 'star-diamond-dot', 'star-diamond-open-dot', 'diamond-tall', 'diamond-tall-open', 'diamond-tall-dot', 'diamond-tall-open-dot', 'diamond-wide', 'diamond-wide-open', 'diamond-wide-dot', 'diamond-wide-open-dot', 'hourglass', 'hourglass-open', 'bowtie', 'bowtie-open', 'circle-cross', 'circle-cross-open', 'circle-x', 'circle-x-open', 'square-cross', 'square-cross-open', 'square-x', 'square-x-open', 'diamond-cross', 'diamond-cross-open', 'diamond-x', 'diamond-x-open', 'cross-thin', 'cross-thin-open', 'x-thin', 'x-thin-open', 'asterisk', 'asterisk-open', 'hash', 'hash-open', 'hash-dot', 'hash-open-dot', 'y-up', 'y-up-open', 'y-down', 'y-down-open', 'y-left', 'y-left-open', 'y-right', 'y-right-open', 'line-ew', 'line-ew-open', 'line-ns', 'line-ns-open', 'line-ne', 'line-ne-open', 'line-nw', 'line-nw-open', 'arrow-up', 'arrow-up-open', 'arrow-down', 'arrow-down-open', 'arrow-left', 'arrow-left-open', 'arrow-right', 'arrow-right-open', 'arrow-bar-up', 'arrow-bar-up-open', 'arrow-bar-down', 'arrow-bar-down-open', 'arrow-bar-left', 'arrow-bar-left-open', 'arrow-bar-right', 'arrow-bar-right-open', 'arrow', 'arrow-open', 'arrow-wide', 'arrow-wide-open'], help='choose line marker (default circle)', default=[], nargs='+', action=ChildAction, parent=inputFileArgument)
+parserLinePlotOptions.add_argument('--line-marker-width', help='choose marker line width (default %(default)s)', type=int, default=1, choices=Range(0,), action=ChildAction, parent=inputFileArgument)
 parserLinePlotOptions.add_argument('--line-marker-size', help='choose line marker size (default %(default)s)', type=int, default=6, choices=Range(0, None), action=ChildAction, parent=inputFileArgument)
+parserLinePlotOptions.add_argument('--line-marker-opacity', help='choose line marker size (default %(default)s)', default='auto', choices=Range(0, 1, ['auto']), action=ChildAction, parent=inputFileArgument)
 parserLinePlotOptions.add_argument("--line-text-position", choices=["top left", "top center", "top right", "middle left", "middle center", "middle right", "bottom left", "bottom center", "bottom right"], help="choose line text positon (default %(default)s)", default='middle center', action=ChildAction, parent=inputFileArgument)
 
 parserBarPlotOptions = parser.add_argument_group('bar plot options')
@@ -1046,7 +1064,6 @@ parserBarPlotOptions.add_argument("--bar-width", help="set explicit bar width", 
 parserBarPlotOptions.add_argument("--bar-shift", help="set bar shift", choices=Range(None, None, ['auto']), default='auto', action=ChildAction, parent=inputFileArgument)
 parserBarPlotOptions.add_argument("--bar-text-position", help="choose bar text position (default %(default)s)", choices=["inside", "outside", "auto", "none"], default='none', action=ChildAction, parent=inputFileArgument)
 parserBarPlotOptions.add_argument("--bar-text-anchor", help="choose bar inside text anchor (default %(default)s)", choices=["end", "middle", "start"], default='start', action=ChildAction, parent=inputFileArgument)
-parserBarPlotOptions.add_argument("--bar-text-template", help="set bar text template (default %(default)s)", type=escapedStr, default='', action=ChildAction, parent=inputFileArgument)
 parserBarPlotOptions.add_argument("--bar-gap", help="set bar gap (default $(default)s)", choices=Range(0, 1, ['auto']), default='auto')
 parserBarPlotOptions.add_argument("--bar-group-gap", help="set bar group gap (default $(default)s)", choices=Range(0, 1), default=0)
 
@@ -1263,7 +1280,6 @@ for input in args.input:
     if options.colour_cycle is None:
         options.colour_cycle = 'global'
 
-
     options.y_grid_colour = f"'{options.y_grid_colour}'" if options.y_grid_colour is not None else f"'{options.grid_colour}'" if options.grid_colour is not None else None
     options.x_grid_colour = f"'{options.x_grid_colour}'" if options.x_grid_colour is not None else f"'{options.grid_colour}'" if options.grid_colour is not None else None
     options.x_colour = f"'{options.y_colour}'" if options.y_colour is not None else None
@@ -1283,7 +1299,7 @@ for input in args.input:
 
     # auto or float value
     translate = {'auto': None }
-    for opt in ['y_range_from', 'x_range_from', 'y_range_to', 'x_range_to', 'y_tickangle', 'x_tickangle', 'bar_width', 'bar_shift']:
+    for opt in ['line_marker_opacity', 'y_range_from', 'x_range_from', 'y_range_to', 'x_range_to', 'y_tickangle', 'x_tickangle', 'bar_width', 'bar_shift']:
       _check = getattr(options, opt)
       setattr(options, opt, translate[_check] if _check in translate else float(_check))
 
@@ -1549,8 +1565,12 @@ for input in args.input:
                         frame = frame.T
                 elif optionName == 'reset_index':
                     frame = DataframeActions.resetIndex(frame)
+                elif optionName == 'drop_index':
+                    frame = DataframeActions.dropIndex(frame)
                 elif optionName == 'reset_columns':
                     frame = DataframeActions.resetColumns(frame)
+                elif optionName == 'drop_columns':
+                    frame = DataframeActions.dropColumns(frame)
                 elif optionName == 'ignore_columns':
                     columnIds = DataframeActions.getColumnIds(frame, optionValue, selectMode, True)
                     frame = DataframeActions.dropColumnsByIds(frame, columnIds)
@@ -1926,7 +1946,7 @@ for input in args.input:
             continue
         inputOptions.frameCount += 1
         inputOptions.traceCount += len([x for x in frame.columns if str(x) not in inputOptions.traceSpecialColumns and str(x) not in inputOptions.frameSpecialColumns])
-        frame = DataframeActions.transformRowIds(DataframeActions.transformColumnIds(frame, ['index'], DataframeActions.transformers['float']), ['columns'], DataframeActions.transformers['float'])
+        frame = DataframeActions.transformRowIds(DataframeActions.transformColumnIds(frame, ['index'], DataframeActions.transformers['mixed']), ['columns'], DataframeActions.transformers['mixed'])
         frame = frame.replace([numpy.inf, -numpy.inf], numpy.nan)
         frame = frame.where(pandas.notnull(frame), None)
 
@@ -2392,7 +2412,10 @@ fig.add_trace(go.Scatter(
 {commentColour}    fillcolor='{fillcolour}', # Currently not supported through script, using default
     stackgroup='{'stackgroup-' + str(inputIndex) if options.line_stack else ''}',
     marker_symbol='{lineMarker}',
+    marker_opacity={options.line_marker_opacity},
     marker_size={options.line_marker_size if _sizes is None else _sizes},
+    marker_line_color='{options.line_colour}',
+    marker_line_width={options.line_marker_width},
     fill='{options.line_fill}',
     line_dash='{options.line_dash}',
     line_shape='{options.line_shape}',
@@ -2402,7 +2425,8 @@ fig.add_trace(go.Scatter(
                     if (_labels is not None):
                         plotScript.write(f"""
     text={_labels},
-    textposition='{options.line_text_position}',""")
+    textposition='{options.line_text_position}',
+    texttemplate='{options.text_template}',""")
                     if (_errors_pos is not None or _errors_neg is not None):
                         plotScript.write(f"""
     error_{'y' if options.horizontal else 'x'}=dict(
@@ -2442,7 +2466,7 @@ fig.add_trace(go.Bar(
                         plotScript.write(f"""
     text={_labels},""")
                     plotScript.write(f"""
-    texttemplate='{options.bar_text_template}',
+    texttemplate='{options.text_template}',
     textposition='{options.bar_text_position}',
     insidetextanchor='{options.bar_text_anchor}',""")
                     if (_bases is not None):
