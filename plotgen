@@ -51,7 +51,7 @@ import multiprocessing
 # import csv.Sniffer
 
 __prog__ = 'plotgen'
-__version__ = '0.7.16'
+__version__ = '0.7.17'
 __url__ = 'https://github.com/bgottschall/plotgen'
 
 
@@ -470,18 +470,23 @@ class DataframeActions:
       return __class__.setIndexColumnByIdx(dataframe.T, rowIdx, drop, transformer).T
 
     def renameColumns(dataframe, columnIds, names):
+      names = list(map(__class__.transformers['index'], names))
       lColumns = dataframe.columns.tolist()
       nColumns = dataframe.columns.name
       for i, columnId in enumerate(columnIds):
-        if i >= len(names) or i >= len(lColumns):
+        if i >= len(names) or i >= len(dataframe.columns):
           break
-        lColumns[columnId] = float(names[i]) if isFloat(names[i]) else names[i]
+        if columnId == 'index':
+          dataframe.index.name = names[i]
+        else:
+          lColumns[columnId] = names[i]
       dataframe.columns = lColumns
       dataframe.columns.name = nColumns
       return dataframe
 
     def renameRows(dataframe, rowIds, names):
-      return __class__.renameColumns(dataframe.T, rowIds, names).T
+      columnIds = ['index' if x == 'columns' else x for x in rowIds]
+      return __class__.renameColumns(dataframe.T, columnIds, names).T
 
     def sortRows(dataframe, function=['none'], order='asc'):
       return __class__.sortColumns(dataframe.T, function, order).T
@@ -1091,7 +1096,6 @@ parserBoxPlotOptions.add_argument("--dendrogram-distance", help="choose the dist
 parserBoxPlotOptions.add_argument("--dendrogram-linkage", help="choose the linkage function, default %(default)s)", default='average', choices=['single' ,'complete', 'average', 'weighted', 'ward', 'centroid', 'median'], action=ChildAction, parent=inputFileArgument)
 parserBoxPlotOptions.add_argument("--dendrogram-colour-threshold", help="colouring threshold, default %(default)s)", default=None, type=float, action=ChildAction, parent=inputFileArgument)
 
-
 parserPlotAxisOptions = parser.add_argument_group('plot axis options')
 parserPlotAxisOptions.add_argument("--y-secondary", help="plot to secondary y-axis", default=False, sticky_default=True, nargs=0, sub_action="store_true", action=ChildAction, parent=inputFileArgument)
 parserPlotAxisOptions.add_argument("--y-title", help="y-axis title", type=escapedStr, default=None, sticky_default=True, action=ChildAction, parent=inputFileArgument)
@@ -1106,10 +1110,12 @@ parserPlotAxisOptions.add_argument("--x-autorange", help="choose autorange mode 
 parserPlotAxisOptions.add_argument("--y-autorange", help="choose autorange mode for y-axis (default %(default)s)", choices=['on', 'off', 'reversed'], default='on', action=ChildAction, parent=inputFileArgument)
 parserPlotAxisOptions.add_argument("--y-range-mode", help="choose range mode for x-axis (default %(default)s)", choices=['normal', 'tozero', 'nonnegative'], default='normal', action=ChildAction, parent=inputFileArgument)
 parserPlotAxisOptions.add_argument("--x-range-mode", help="choose range mode for y-axis (default %(default)s)", choices=['normal', 'tozero', 'nonnegative'], default='normal', action=ChildAction, parent=inputFileArgument)
+parserPlotAxisOptions.add_argument("--z-range-from", help="z-axis start (default %(default)s)", default='auto', sticky_default=True, choices=Range(None, None, ['auto']), action=ChildAction, parent=inputFileArgument)
 parserPlotAxisOptions.add_argument("--y-range-from", help="y-axis start (default %(default)s)", default='auto', sticky_default=True, choices=Range(None, None, ['auto']), action=ChildAction, parent=inputFileArgument)
 parserPlotAxisOptions.add_argument("--x-range-from", help="x-axis start (default %(default)s)", default='auto', sticky_default=True, choices=Range(None, None, ['auto']), action=ChildAction, parent=inputFileArgument)
+parserPlotAxisOptions.add_argument("--z-range-to", help="z-axis end (default %(default)s)", default='auto', sticky_default=True, choices=Range(None, None, ['auto']), action=ChildAction, parent=inputFileArgument)
 parserPlotAxisOptions.add_argument("--y-range-to", help="y-axis end (default %(default)s)", default='auto', sticky_default=True, choices=Range(None, None, ['auto']), action=ChildAction, parent=inputFileArgument)
-parserPlotAxisOptions.add_argument("--x-range-to", help="x-axis start (default %(default)s)", default='auto', sticky_default=True, choices=Range(None, None, ['auto']), action=ChildAction, parent=inputFileArgument)
+parserPlotAxisOptions.add_argument("--x-range-to", help="x-axis end (default %(default)s)", default='auto', sticky_default=True, choices=Range(None, None, ['auto']), action=ChildAction, parent=inputFileArgument)
 parserPlotAxisOptions.add_argument("--y-tick-format", help="set format of y-axis ticks", default='', sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserPlotAxisOptions.add_argument("--x-tick-format", help="set format of x-axis ticks", default='', sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserPlotAxisOptions.add_argument("--y-tick-suffix", help="set suffix to y-axis ticks", default='', sticky_default=True, action=ChildAction, parent=inputFileArgument)
@@ -1167,7 +1173,8 @@ parserColourOptions.add_argument("--subplot-palette-start", help="set the subplo
 parserColourOptions.add_argument("--subplot-palette-cmap", help="how to generate continous colour maps (default linear)", type=str, default=None, choices=['linear', 'log', 'rlog'], sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserColourOptions.add_argument("--colour-cycle", help="cycle through colours globally or per subplot (default global)", choices=['subplot', 'global'], default=None, action=ChildAction, parent=inputFileArgument)
 parserColourOptions.add_argument("--colour-debug", help="print generated colour palettes", action="store_true", default=False)
-parserColourOptions.add_argument("--colour-scale", help="show or hide continous colour scales (default %(default)s)", choices=['show', 'hide'], default='show', action=ChildAction, parent=inputFileArgument)
+parserColourOptions.add_argument("--colour-scale", help="show, reverse or hide continous colour scales (default %(default)s)", choices=['show', 'reverse', 'hide'], default='show', action=ChildAction, parent=inputFileArgument)
+parserColourOptions.add_argument("--colour-scale-orientation", help="set the colour scale orientation (default %(default)s)", choices=['vertical', 'v', 'horizontal', 'h'], default='v', action=ChildAction, parent=inputFileArgument)
 
 parserColourOptions.add_argument("--per-trace-colours", help="one colour for each trace (default)", action='store_true', default=False)
 parserColourOptions.add_argument("--per-frame-colours", help="one colour for each dataframe", action='store_true', default=False)
@@ -1329,6 +1336,13 @@ for input in args.input:
             options.x_range_from = 0
 
     violinMode = options.violin_mode
+
+
+    if options.colour_scale_orientation == 'horizontal':
+      options.colour_scale_orientation == 'h'
+    elif options.colour_scale_orientation == 'vertical':
+      options.colour_scale_orientation == 'v'
+
 
 args.bar_gap = None if args.bar_gap == 'auto' else float(args.bar_gap)
 args.master_title = f"'{args.master_title}'" if args.master_title is not None else None
@@ -1818,20 +1832,20 @@ for input in args.input:
                 elif optionName == 'column_names':
                     frame = DataframeActions.renameColumns(frame, list(range(frame.shape[1])), optionValue)
                 elif optionName == 'icolumn_names':
-                    if not isSliceType(optionValue[0]):
+                    if optionValue[0] != 'index' or not isSliceType(optionValue[0]):
                         if not args.quiet:
                             print(f'WARNING: invalid index or slice provided to {optionName}', file=sys.stderr)
                     if len(optionValue) > 1:
-                        columnIds = DataframeActions.sliceToColumnIds(frame, SliceType()(optionValue[0]))
+                        columnIds = ['index'] if optionValue[0] == 'index' else DataframeActions.sliceToColumnIds(frame, SliceType()(optionValue[0]))
                         frame = DataframeActions.renameColumns(frame, columnIds, optionValue[1:])
                 elif optionName == 'row_names':
                     frame = DataframeActions.renameRows(frame, list(range(frame.shape[0])), optionValue)
                 elif optionName == 'irow_names':
-                    if not isSliceType(optionValue[0]):
+                    if optionValue[0] != 'columns' or not isSliceType(optionValue[0]):
                         if not args.quiet:
                             print(f'WARNING: invalid index or slice provided to {optionName}', file=sys.stderr)
                     if len(optionValue) > 1:
-                        rowIds = DataframeActions.sliceToRowIds(frame, SliceType()(optionValue[0]))
+                        rowIds = ['columns'] if optionValue[0] == 'columns' else DataframeActions.sliceToRowIds(frame, SliceType()(optionValue[0]))
                         frame = DataframeActions.renameRows(frame, rowIds, optionValue[1:])
                 elif optionName == 'drop_nan':
                     frame = DataframeActions.dropNaN(frame)
@@ -2600,8 +2614,13 @@ fig.add_trace(go.Heatmap(
     y={yaxis},
     x={xaxis},
     z={data},
+    zauto={True if options.z_range_from == 'auto' and options.z_range_to == 'auto' else False},
+    zmin={None if options.z_range_from == 'auto' else options.z_range_from},
+    zmax={None if options.z_range_to == 'auto' else options.z_range_to},
 {commentColour}    colorscale={subplot['cmap']},
-    showscale={options.colour_scale == 'show'},
+    colorbar_orientation='{options.colour_scale_orientation}',
+    showscale={options.colour_scale != 'hide'},
+    reversescale={options.colour_scale == 'reverse'},
 ), col={options.col}, row={options.row}, secondary_y={options.y_secondary})
               """)
             elif options.plot == 'dendrogram':
@@ -2768,7 +2787,7 @@ fig.add_trace({sDendrogramTrace}, col={options.col}, row={options.row}, secondar
       if options.x_autorange == 'True':
         plotScript.write('# ')
       plotScript.write(f"fig.update_xaxes(range=[{plotRange[1]['min']}, {plotRange[1]['max']}], col={options.col}, row={options.row})\n")
-    plotScript.write(f"fig.update_coloraxes(showscale={options.colour_scale == 'show'}, col={options.col}, row={options.row})\n")
+    plotScript.write(f"fig.update_coloraxes(colorbar_orientation='{options.colour_scale_orientation}', showscale={options.colour_scale == 'show'}, col={options.col}, row={options.row})\n")
     plotScript.write("\n")
 
 if violinMode.endswith('halfgroup'):
