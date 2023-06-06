@@ -51,7 +51,7 @@ import multiprocessing
 # import csv.Sniffer
 
 __prog__ = 'plotgen'
-__version__ = '0.7.17'
+__version__ = '0.7.18'
 __url__ = 'https://github.com/bgottschall/plotgen'
 
 
@@ -299,13 +299,29 @@ class DataframeActions:
     def considerAsNaN(value):
       return str(value).lower() in ['nan', 'none', 'null', 'zero', 'nodata']
 
+    # Before plotting index and columns MUST BE string, for plotting those can be anything
+    # all other data always tries to be float if not enforced otherwise. Any data from a csv
+    # is always read in as float if possible
+    transformers = {
+      'identity': lambda x: x,
+      'str' : str,
+      'int' : lambda x: numpy.nan if __class__.considerAsNaN(x) or (isFloat(x) and numpy.isnan(float(x))) else int(float(x)) if isFloat(x) else x,
+      'float': lambda x: numpy.nan if __class__.considerAsNaN(x) or (isFloat(x) and numpy.isnan(float(x))) else float(x) if isFloat(x) else x,
+      'index': lambda x: numpy.nan if __class__.considerAsNaN(x) or (isFloat(x) and numpy.isnan(float(x))) else str((float(x) if numpy.floor(float(x)).astype(int) != float(x) else numpy.floor(float(x)).astype(int)) if isFloat(x) else x),
+      'forcefloat': lambda x: numpy.nan if not isFloat(x) else float(x),
+      'forceint': lambda x: numpy.nan if not isFloat(x) or numpy.isnan(float(x)) else int(float(x)),
+      'mixed': lambda x: numpy.nan if __class__.considerAsNaN(x) or (isFloat(x) and numpy.isnan(float(x))) else (float(x) if numpy.floor(float(x)).astype(int) != float(x) else numpy.floor(float(x)).astype(int)) if isFloat(x) else str(x), # nan if nan, float if float, int if int else str
+    }
+
+
     functions = {
-      'pandasSelfFunctions': ['abs', 'cumsum', 'cummax', 'cummin', 'cumprod', 'rank', 'diff', 'round', 'floor', 'ceil', 'str', 'int', 'float', 'index', 'forceint', 'forcefloat'],
+      'pandasSelfFunctions': ['abs', 'cumsum', 'cummax', 'cummin', 'cumprod', 'rank', 'diff', 'round', 'floor', 'ceil', 'str', 'int', 'float'],
       'specialSelfFunctions': ['set', 'cset', 'polyfit', 'append' , 'prepend', 'ljust', 'rjust', 'cjust', 'kmeans'],
       'amidComputeFunctions': ['add', 'sub', 'mul', 'div', 'truediv', 'floordiv', 'mod', 'pow', 'radd', 'rsub', 'rmul', 'rdiv', 'rtruediv', 'rfloordiv', 'rmod', 'rpow', 'lt', 'gt', 'le', 'ge', 'ne', 'eq', 'min', 'max'],
       'onlyAmidComputeFunctions' : ['concat', 'copy', 'kmeans_labels'],
       'soloComputeFunctions': ['sum', 'mean', 'median', 'std', 'var', 'count', 'skew', 'mad', 'min', 'max'],
-      'specialGroupFunctions' : ['kmeans']
+      'specialGroupFunctions' : ['kmeans'],
+      'nonComputeFunctions': ['set', 'cset', 'append', 'prepend', 'ljust', 'rjust', 'cjust', 'concat', 'copy', 'kmeans_labels'] + list(transformers.keys())
     }
 
     def parseKMeansParameters(parameters: list):
@@ -327,21 +343,6 @@ class DataframeActions:
       res['n_init'] = 'auto' if res['n_init'] == 'auto' else int(res['n_init'])
       res['samples'] = True if res['samples'].lower() in ['yes', 'true', '1'] else False
       return res
-
-
-    # Before plotting index and columns MUST BE string, for plotting those can be anything
-    # all other data always tries to be float if not enforced otherwise. Any data from a csv
-    # is always read in as float if possible
-    transformers = {
-      'identity': lambda x: x,
-      'str' : str,
-      'int' : lambda x: numpy.nan if __class__.considerAsNaN(x) or (isFloat(x) and numpy.isnan(float(x))) else int(float(x)) if isFloat(x) else x,
-      'float': lambda x: numpy.nan if __class__.considerAsNaN(x) or (isFloat(x) and numpy.isnan(float(x))) else float(x) if isFloat(x) else x,
-      'index': lambda x: str(numpy.nan if __class__.considerAsNaN(x) or (isFloat(x) and numpy.isnan(float(x))) else (float(x) if numpy.floor(float(x)).astype(int) != float(x) else numpy.floor(float(x)).astype(int)) if isFloat(x) else x),
-      'forcefloat': lambda x: numpy.nan if not isFloat(x) else float(x),
-      'forceint': lambda x: numpy.nan if not isFloat(x) or numpy.isnan(float(x)) else int(float(x)),
-      'mixed': lambda x: numpy.nan if __class__.considerAsNaN(x) or (isFloat(x) and numpy.isnan(float(x))) else (float(x) if numpy.floor(float(x)).astype(int) != float(x) else numpy.floor(float(x)).astype(int)) if isFloat(x) else str(x), # nan if nan, float if float, int if int else str
-    }
 
     conditions = ['=', '!=', '<', '>', '<=', '>=', 'in', 'notin', 'xor', 'nor', 'and', 'nand']
 
@@ -576,9 +577,11 @@ class DataframeActions:
             raise Exception(f'apply function with name \'{functionName}\' unknown!')
 
         with pandas.option_context('mode.chained_assignment', None):
-            if functionName in __class__.functions['pandasSelfFunctions'] + __class__.functions['specialSelfFunctions'] + (__class__.functions['amidComputeFunctions'] if len(functionParams) > 0 else []):
+            if functionName in __class__.functions['pandasSelfFunctions'] + __class__.functions['specialSelfFunctions'] + list(__class__.transformers.keys()) + (__class__.functions['amidComputeFunctions'] if len(functionParams) > 0 else []):
                 applyColumnIds += targetColumnIds
 
+                if functionName in __class__.transformers.keys():
+                  dataframe.iloc[:, applyColumnIds] = dataframe.iloc[:, applyColumnIds].applymap(__class__.transformers[functionName])
                 if functionName in __class__.functions['pandasSelfFunctions']:
                     if functionName == 'abs':
                       dataframe.iloc[:, applyColumnIds] = dataframe.iloc[:, applyColumnIds].abs().values
@@ -591,8 +594,6 @@ class DataframeActions:
                       if len(functionParams) > 0 and not str(functionParams[0]).isdigit() and not quiet:
                         print('WARNING: round function parameter needs to be an integer', file=sys.stderr)
                       dataframe.iloc[:, applyColumnIds] = dataframe.iloc[:, applyColumnIds].round(decimals).values
-                    elif functionName in __class__.transformers.keys():
-                      dataframe.iloc[:, applyColumnIds] = dataframe.iloc[:, applyColumnIds].applymap(__class__.transformers[functionName])
                     else:
                       dataframe.iloc[:, applyColumnIds] = getattr(dataframe.iloc[:, applyColumnIds], functionName)(axis=0).values
                 elif functionName == 'kmeans':
@@ -1069,6 +1070,7 @@ parserBarPlotOptions.add_argument("--bar-width", help="set explicit bar width", 
 parserBarPlotOptions.add_argument("--bar-shift", help="set bar shift", choices=Range(None, None, ['auto']), default='auto', action=ChildAction, parent=inputFileArgument)
 parserBarPlotOptions.add_argument("--bar-text-position", help="choose bar text position (default %(default)s)", choices=["inside", "outside", "auto", "none"], default='none', action=ChildAction, parent=inputFileArgument)
 parserBarPlotOptions.add_argument("--bar-text-anchor", help="choose bar inside text anchor (default %(default)s)", choices=["end", "middle", "start"], default='start', action=ChildAction, parent=inputFileArgument)
+parserBarPlotOptions.add_argument("--bar-text-angle", help="set bar text angle (default %(default)s)", choices=Range(None, None, ['auto']), default='auto', action=ChildAction, parent=inputFileArgument)
 parserBarPlotOptions.add_argument("--bar-gap", help="set bar gap (default $(default)s)", choices=Range(0, 1, ['auto']), default='auto')
 parserBarPlotOptions.add_argument("--bar-group-gap", help="set bar group gap (default $(default)s)", choices=Range(0, 1), default=0)
 
@@ -1306,7 +1308,7 @@ for input in args.input:
 
     # auto or float value
     translate = {'auto': None }
-    for opt in ['line_marker_opacity', 'y_range_from', 'x_range_from', 'y_range_to', 'x_range_to', 'y_tickangle', 'x_tickangle', 'bar_width', 'bar_shift']:
+    for opt in ['bar_text_angle', 'line_marker_opacity', 'y_range_from', 'x_range_from', 'y_range_to', 'x_range_to', 'y_tickangle', 'x_tickangle', 'bar_width', 'bar_shift']:
       _check = getattr(options, opt)
       setattr(options, opt, translate[_check] if _check in translate else float(_check))
 
@@ -1732,33 +1734,33 @@ for input in args.input:
                 elif optionName == 'abs':
                     frame = DataframeActions.abs(frame)
                 elif optionName == 'apply_irows':
-                  targetConverts = applyFunction[0] in DataframeActions.transformers.keys()
+                  targetComputes = applyFunction[0] not in DataframeActions.functions['nonComputeFunctions']
                   if 'columns' in optionValue:
                     applyRowIds = [0] if optionValue[0] == 'columns' else [x + 1 for x in DataframeActions.sliceToRowIds(frame, optionValue[0])]
                     targetRowIds = [v for lV in [[x + 1 for x in DataframeActions.sliceToRowIds(frame, oV)] if oV != 'columns' else [0] for oV in optionValue[1:]] for v in lV] if len(optionValue) > 1 else []
-                    frame = DataframeActions.resetColumns(frame, DataframeActions.transformers['float'] if not targetConverts else DataframeActions.transformers['identity'])
+                    frame = DataframeActions.resetColumns(frame, DataframeActions.transformers['float'] if targetComputes else DataframeActions.transformers['identity'])
                   else:
                     applyRowIds = DataframeActions.sliceToRowIds(frame, optionValue[0])
                     targetRowIds = DataframeActions.sliceToRowIds(frame, optionValue[1:]) if len(optionValue) > 1 else []
                   frame = DataframeActions.applyOnRows(frame, applyRowIds, targetRowIds, applyFunction, applyMode)
                   if 'columns' in optionValue:
-                    frame = DataframeActions.setColumnsRowByIdx(frame, 0, True, DataframeActions.transformers['index'] if not targetConverts else DataframeActions.transformers['str'])
+                    frame = DataframeActions.setColumnsRowByIdx(frame, 0, True, DataframeActions.transformers['index'] if targetComputes else DataframeActions.transformers['str'])
                 elif optionName == 'apply_rows':
                   applyRowIds = DataframeActions.getRowIds(frame, optionValue[0])
                   targetRowIds = DataframeActions.getRowIds(frame, optionValue[1:]) if len(optionValue) > 1 else []
                   frame = DataframeActions.applyOnRows(frame, applyRowIds, targetRowIds, applyFunction, applyMode)
                 elif optionName == 'apply_icolumns':
-                  targetConverts = applyFunction[0] in DataframeActions.transformers.keys()
+                  targetComputes = applyFunction[0] not in DataframeActions.functions['nonComputeFunctions']
                   if 'index' in optionValue:
                     applyColumnIds = [0] if optionValue[0] == 'index' else DataframeActions.sliceToColumnIds(frame, optionValue[0])
                     targetColumnIds = [v for lV in [[x + 1 for x in DataframeActions.sliceToColumnIds(frame, oV)] if oV != 'index' else [0] for oV in optionValue[1:]] for v in lV] if len(optionValue) > 1 else []
-                    frame = DataframeActions.resetIndex(frame, DataframeActions.transformers['float'] if not targetConverts else DataframeActions.transformers['identity'])
+                    frame = DataframeActions.resetIndex(frame, DataframeActions.transformers['float'] if targetComputes else DataframeActions.transformers['identity'])
                   else:
                     applyColumnIds = DataframeActions.sliceToColumnIds(frame, optionValue[0])
                     targetColumnIds = DataframeActions.sliceToColumnIds(frame, optionValue[1:]) if len(optionValue) > 1 else []
                   frame = DataframeActions.applyOnColumns(frame, applyColumnIds, targetColumnIds, applyFunction, applyMode)
                   if 'index' in optionValue:
-                    frame = DataframeActions.setIndexColumnByIdx(frame, 0, True, DataframeActions.transformers['index'] if not targetConverts else DataframeActions.transformers['str'])
+                    frame = DataframeActions.setIndexColumnByIdx(frame, 0, True, DataframeActions.transformers['index'] if targetComputes else DataframeActions.transformers['str'])
                 elif optionName == 'apply_columns':
                     applyColumnIds = DataframeActions.getColumnIds(frame, optionValue[0])
                     targetColumnIds = DataframeActions.getColumnIds(frame, optionValue[1:]) if len(optionValue) > 1 else []
@@ -2482,7 +2484,8 @@ fig.add_trace(go.Bar(
                     plotScript.write(f"""
     texttemplate='{options.text_template}',
     textposition='{options.bar_text_position}',
-    insidetextanchor='{options.bar_text_anchor}',""")
+    insidetextanchor='{options.bar_text_anchor}',
+    textangle={options.bar_text_angle},""")
                     if (_bases is not None):
                         plotScript.write(f"""
     base={_bases},""")
