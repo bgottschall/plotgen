@@ -51,7 +51,7 @@ import multiprocessing
 # import csv.Sniffer
 
 __prog__ = 'plotgen'
-__version__ = '0.7.18'
+__version__ = '0.7.19'
 __url__ = 'https://github.com/bgottschall/plotgen'
 
 
@@ -582,7 +582,7 @@ class DataframeActions:
 
                 if functionName in __class__.transformers.keys():
                   dataframe.iloc[:, applyColumnIds] = dataframe.iloc[:, applyColumnIds].applymap(__class__.transformers[functionName])
-                if functionName in __class__.functions['pandasSelfFunctions']:
+                elif functionName in __class__.functions['pandasSelfFunctions']:
                     if functionName == 'abs':
                       dataframe.iloc[:, applyColumnIds] = dataframe.iloc[:, applyColumnIds].abs().values
                     elif functionName == 'ceil':
