@@ -51,7 +51,7 @@ import multiprocessing
 # import csv.Sniffer
 
 __prog__ = 'plotgen'
-__version__ = '0.7.19'
+__version__ = '0.8.0'
 __url__ = 'https://github.com/bgottschall/plotgen'
 
 
@@ -212,13 +212,15 @@ def SliceType(translator=defaultSliceTypeTranslator):
 
 
 def isSliceType(value, translator=defaultSliceTypeTranslator):
-    if value is None:
-        return False
-    try:
-        SliceType(translator)(value)
-        return True
-    except Exception:
-        return False
+  if value is None:
+    return False
+  try:
+    SliceType(translator)(value)
+    return True
+  except Exception:
+    return False
+
+
 
 
 def getSliceTypeIds(targetRange: range, slices: list):
@@ -315,7 +317,7 @@ class DataframeActions:
 
 
     functions = {
-      'pandasSelfFunctions': ['abs', 'cumsum', 'cummax', 'cummin', 'cumprod', 'rank', 'diff', 'round', 'floor', 'ceil', 'str', 'int', 'float'],
+      'pandasSelfFunctions': ['abs', 'cumsum', 'cummax', 'cummin', 'cumprod', 'cummean', 'cummedian', 'cumstd', 'cumvar', 'cumrank', 'cumskew', 'rank', 'diff', 'round', 'floor', 'ceil', 'str', 'int', 'float'],
       'specialSelfFunctions': ['set', 'cset', 'polyfit', 'append' , 'prepend', 'ljust', 'rjust', 'cjust', 'kmeans'],
       'amidComputeFunctions': ['add', 'sub', 'mul', 'div', 'truediv', 'floordiv', 'mod', 'pow', 'radd', 'rsub', 'rmul', 'rdiv', 'rtruediv', 'rfloordiv', 'rmod', 'rpow', 'lt', 'gt', 'le', 'ge', 'ne', 'eq', 'min', 'max'],
       'onlyAmidComputeFunctions' : ['concat', 'copy', 'kmeans_labels'],
@@ -594,6 +596,9 @@ class DataframeActions:
                       if len(functionParams) > 0 and not str(functionParams[0]).isdigit() and not quiet:
                         print('WARNING: round function parameter needs to be an integer', file=sys.stderr)
                       dataframe.iloc[:, applyColumnIds] = dataframe.iloc[:, applyColumnIds].round(decimals).values
+                    elif functionName in ['cummean', 'cummedian', 'cumstd', 'cumvar', 'cumrank', 'cumskew']:
+                      functionName = functionName[3:]
+                      dataframe.iloc[:, applyColumnIds] = getattr(dataframe.iloc[:, applyColumnIds].apply(pandas.to_numeric, errors='coerce').expanding(), functionName)()
                     else:
                       dataframe.iloc[:, applyColumnIds] = getattr(dataframe.iloc[:, applyColumnIds], functionName)(axis=0).values
                 elif functionName == 'kmeans':
@@ -715,7 +720,7 @@ class DataframeActions:
       else:
         print('WARNING: grouping n rows/columns with a non-numerical index will use a interpolated version', file=sys.stderr)
         index = dataframe.index
-      dataframe = getattr(dataframe.groupby(numpy.arange(len(dataframe.index)) // n, axis=0), functionName)()
+      dataframe = getattr(dataframe.groupby(numpy.arange(len(dataframe.index)) // n, axis=0), functionName)(numeric_only = False)
       if treatIndexAsFloat:
         dataframe = __class__.setIndexColumnByIdx(dataframe, 0, True)
       else:
@@ -1834,19 +1839,19 @@ for input in args.input:
                 elif optionName == 'column_names':
                     frame = DataframeActions.renameColumns(frame, list(range(frame.shape[1])), optionValue)
                 elif optionName == 'icolumn_names':
-                    if optionValue[0] != 'index' or not isSliceType(optionValue[0]):
-                        if not args.quiet:
-                            print(f'WARNING: invalid index or slice provided to {optionName}', file=sys.stderr)
-                    if len(optionValue) > 1:
+                    if optionValue[0] != 'index' and not isSliceType(optionValue[0]):
+                      if not args.quiet:
+                        print(f'WARNING: invalid index or slice provided to {optionName}', file=sys.stderr)
+                    elif len(optionValue) > 1:
                         columnIds = ['index'] if optionValue[0] == 'index' else DataframeActions.sliceToColumnIds(frame, SliceType()(optionValue[0]))
                         frame = DataframeActions.renameColumns(frame, columnIds, optionValue[1:])
                 elif optionName == 'row_names':
                     frame = DataframeActions.renameRows(frame, list(range(frame.shape[0])), optionValue)
                 elif optionName == 'irow_names':
-                    if optionValue[0] != 'columns' or not isSliceType(optionValue[0]):
+                    if optionValue[0] != 'columns' and not isSliceType(optionValue[0]):
                         if not args.quiet:
                             print(f'WARNING: invalid index or slice provided to {optionName}', file=sys.stderr)
-                    if len(optionValue) > 1:
+                    elif len(optionValue) > 1:
                         rowIds = ['columns'] if optionValue[0] == 'columns' else DataframeActions.sliceToRowIds(frame, SliceType()(optionValue[0]))
                         frame = DataframeActions.renameRows(frame, rowIds, optionValue[1:])
                 elif optionName == 'drop_nan':
