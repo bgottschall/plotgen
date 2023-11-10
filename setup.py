@@ -21,15 +21,5 @@ setup(
         ],
    keywords='tables graph plot parser plotly',
    python_requires='>=3.7',
-   install_requires=[
-       'scikit-learn>=1.2.1',
-       'scipy>=1.8.1',
-       'argcomplete>=1.12.3', 
-       'plotly>=5.14.1', 
-       'numpy>=1.21.1', 
-       'pandas>=1.4.0', 
-       'xopen>=1.7.0', 
-       'kaleido>=0.2.1', 
-       'seaborn>=0.11.1'
-       ],
+   install_requires=open(os.path.join(os.path.dirname(__file__), 'requirements.txt')).readlines(),
 )   

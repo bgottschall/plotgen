@@ -7,3 +7,4 @@ pandas>=1.4.0
 xopen>=1.7.0
 kaleido>=0.2.1
 seaborn>=0.11.1
+argcomplete>=3.1.4

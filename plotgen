@@ -51,7 +51,7 @@ import multiprocessing
 # import csv.Sniffer
 
 __prog__ = 'plotgen'
-__version__ = '0.8.0'
+__version__ = '0.8.1'
 __url__ = 'https://github.com/bgottschall/plotgen'
 
 
@@ -440,7 +440,7 @@ class DataframeActions:
         dataframe.index = dataframe.index.map(transformer)
         columnIds = [c for c in columnIds if c != 'index']
       if len(columnIds) > 0:
-        dataframe = dataframe.iloc[:, columnIds].applymap(transformer)
+        dataframe = dataframe.iloc[:, columnIds].map(transformer)
       return dataframe
 
     def transformRowIds(dataframe, rowIds, transformer):
@@ -583,7 +583,7 @@ class DataframeActions:
                 applyColumnIds += targetColumnIds
 
                 if functionName in __class__.transformers.keys():
-                  dataframe.iloc[:, applyColumnIds] = dataframe.iloc[:, applyColumnIds].applymap(__class__.transformers[functionName])
+                  dataframe.iloc[:, applyColumnIds] = dataframe.iloc[:, applyColumnIds].map(__class__.transformers[functionName])
                 elif functionName in __class__.functions['pandasSelfFunctions']:
                     if functionName == 'abs':
                       dataframe.iloc[:, applyColumnIds] = dataframe.iloc[:, applyColumnIds].abs().values
@@ -654,7 +654,7 @@ class DataframeActions:
                     if any(not isFloat(x) for x in functionParams) and not quiet:
                         print(f'WARNING: applying function {functionName} not compatible with non-float arguments!', file=sys.stderr)
                     param = getattr(numpy, functionName)([x for x in functionParams if isFloat(x)])
-                    dataframe.iloc[:, applyColumnIds] = dataframe.iloc[:, applyColumnIds].apply(pandas.to_numeric, errors='coerce').applymap(lambda x: getattr(numpy, functionName)([x, param]), 'ignore')
+                    dataframe.iloc[:, applyColumnIds] = dataframe.iloc[:, applyColumnIds].apply(pandas.to_numeric, errors='coerce').map(lambda x: getattr(numpy, functionName)([x, param]), 'ignore')
                 else:
                     if any(not isFloat(x) for x in functionParams) and not quiet:
                         print(f'WARNING: applying function {functionName} not compatible with non-float arguments!', file=sys.stderr)
@@ -1489,7 +1489,7 @@ for input in args.input:
                 raise Exception(f'pickle file {filename} is not a pandas data frame!')
             else:
                 frame = frame.apply(pandas.to_numeric, errors='ignore')
-                frame = frame.applymap(lambda x: float(x) if isFloat(x) else numpy.nan if isinstance(x, str) and x.lower() in DataframeActions.considerAsNaN else x)
+                frame = frame.map(lambda x: float(x) if isFloat(x) else numpy.nan if isinstance(x, str) and x.lower() in DataframeActions.considerAsNaN else x)
 
                 frame = DataframeActions.transformColumnIds(frame, ['index'], DataframeActions.transformers['index'])
                 frame = DataframeActions.transformRowIds(frame, ['columns'], DataframeActions.transformers['index'])
@@ -1532,7 +1532,7 @@ for input in args.input:
               print("DEBUG: parsing number formats", file=sys.stderr)
             # Relatively slow, though I don't see a way around it
             frame = frame.apply(pandas.to_numeric, errors='ignore')
-            frame = frame.applymap(DataframeActions.transformers['float'])
+            frame = frame.map(DataframeActions.transformers['float'])
 
             frame = DataframeActions.transformColumnIds(frame, ['index'], DataframeActions.transformers['index'])
             frame = DataframeActions.transformRowIds(frame, ['columns'], DataframeActions.transformers['index'])
