@@ -30,6 +30,7 @@ import numpy
 import os
 import io
 import gc
+import re
 import subprocess
 import sys
 import pickle
@@ -38,6 +39,8 @@ import textwrap
 import shutil
 import xopen
 import seaborn
+import random
+import string
 import plotly.figure_factory
 import scipy.cluster.hierarchy
 import scipy.spatial.distance
@@ -51,7 +54,7 @@ import multiprocessing
 # import csv.Sniffer
 
 __prog__ = 'plotgen'
-__version__ = '0.8.2'
+__version__ = '0.8.3'
 __url__ = 'https://github.com/bgottschall/plotgen'
 
 
@@ -318,13 +321,35 @@ class DataframeActions:
 
     functions = {
       'pandasSelfFunctions': ['abs', 'cumsum', 'cummax', 'cummin', 'cumprod', 'cummean', 'cummedian', 'cumstd', 'cumvar', 'cumrank', 'cumskew', 'rank', 'diff', 'round', 'floor', 'ceil', 'str', 'int', 'float'],
-      'specialSelfFunctions': ['set', 'cset', 'polyfit', 'append' , 'prepend', 'ljust', 'rjust', 'cjust', 'kmeans'],
+      'specialSelfFunctions': ['set', 'cset', 'polyfit', 'append' , 'prepend', 'ljust', 'rjust', 'cjust', 'kmeans', 'sed'],
       'amidComputeFunctions': ['add', 'sub', 'mul', 'div', 'truediv', 'floordiv', 'mod', 'pow', 'radd', 'rsub', 'rmul', 'rdiv', 'rtruediv', 'rfloordiv', 'rmod', 'rpow', 'lt', 'gt', 'le', 'ge', 'ne', 'eq', 'min', 'max'],
       'onlyAmidComputeFunctions' : ['concat', 'copy', 'kmeans_labels'],
       'soloComputeFunctions': ['sum', 'mean', 'median', 'std', 'var', 'count', 'skew', 'mad', 'min', 'max'],
       'specialGroupFunctions' : ['kmeans'],
-      'nonComputeFunctions': ['set', 'cset', 'append', 'prepend', 'ljust', 'rjust', 'cjust', 'concat', 'copy', 'kmeans_labels'] + list(transformers.keys())
+      'nonComputeFunctions': ['set', 'cset', 'append', 'prepend', 'ljust', 'rjust', 'cjust', 'concat', 'copy', 'sed', 'kmeans_labels'] + list(transformers.keys())
     }
+
+    def parseSedPattern(pattern):
+      pattern = str(pattern)
+      splittedPattern = [None, None, None, None]
+      if pattern.startswith('s') and len(pattern)>=4:
+        patternDelimiter = pattern[1]
+        doubleEscaper = 'RANDOMSTRING'
+        while doubleEscaper in pattern:
+          doubleEscaper = random.choice(string.ascii_lowercase, K=10)
+        splittedPattern = [s.replace(doubleEscaper, '\\') for s in re.split(r'(?<!\\)' + re.escape(patternDelimiter) , pattern.replace('\\', doubleEscaper))]
+        splittedPattern[0] = None
+        if len(splittedPattern) == 4:
+          flags = splittedPattern[3].lower()
+          splittedPattern[3] = re.IGNORECASE if 'i' in flags else 0
+          try:
+            splittedPattern[0] = re.compile(splittedPattern[1], splittedPattern[3])
+          except:
+            pass
+          if splittedPattern[0] is not None:
+            splittedPattern[1] = splittedPattern[2]
+            splittedPattern[2] = 0 if 'g' in flags else 1
+      return splittedPattern
 
     def parseKMeansParameters(parameters: list):
       res = { 'n_clusters' : 8, 'init': 'k-means++', 'n_init': 'auto', 'max_iter': 300, 'tol': 1e-4, 'algorithm': 'lloyd' , 'samples': 'yes'}
@@ -349,27 +374,36 @@ class DataframeActions:
     conditions = ['=', '!=', '<', '>', '<=', '>=', 'in', 'notin', 'xor', 'nor', 'and', 'nand']
 
     def filterFunction(frame, data, mode, quiet=False):
-        filterMap = {
-            '=': lambda x: any((pandas.isna(x) and pandas.isna(y)) or (float(x) == float(y) if isFloat([x, y]) else str(x) == str(y)) for y in data),
-            '!=': lambda x: all(((pandas.isna(x) != pandas.isna(y)) if (pandas.isna(x) or pandas.isna(y)) else (float(x) != float(y) if isFloat([x, y]) else str(x) != str(y))) for y in data),
-            '<': lambda x: any(float(x) < float(y) if isFloat([x, y]) else str(x) < str(y) for y in data),
-            '>': lambda x: any(float(x) > float(y) if isFloat([x, y]) else str(x) > str(y) for y in data),
-            '<=': lambda x: any(((pandas.isna(x) and pandas.isna(y)) or float(x) <= float(y) if isFloat([x, y]) else str(x) <= str(y)) for y in data),
-            '>=': lambda x: any(((pandas.isna(x) and pandas.isna(y)) or float(x) >= float(y) if isFloat([x, y]) else str(x) >= str(y)) for y in data),
-            'in': lambda x: x in data,
-            'notin': lambda x: x not in data,
-            'xor': lambda x: all(bool(int(y) ^ int(x)) if str(x).isdigit and str(y).isdigit else False for y in data),
-            'nor': lambda x: all(not bool(int(y) ^ int(x)) if str(x).isdigit and str(y).isdigit else False for y in data),
-            'and': lambda x: all(bool(int(y) & int(x)) if str(x).isdigit and str(y).isdigit else False for y in data),
-            'nand': lambda x: all(not bool(int(y) & int(x)) if str(x).isdigit and str(y).isdigit else False for y in data),
-        }
-        if mode not in filterMap:
-            if not quiet:
-                raise Exception(f'ERROR: could not find condition {mode}')
-        else:
-            return frame.apply(filterMap[mode])
+      regexMap = {
+      }
+
+      filterMap = {
+          '=': lambda x, data: any((pandas.isna(x) and pandas.isna(y)) or (float(x) == float(y) if isFloat([x, y]) else str(x) == str(y)) for y in data),
+          '!=': lambda x, data: all(((pandas.isna(x) != pandas.isna(y)) if (pandas.isna(x) or pandas.isna(y)) else (float(x) != float(y) if isFloat([x, y]) else str(x) != str(y))) for y in data),
+          '<': lambda x, data: any(float(x) < float(y) if isFloat([x, y]) else str(x) < str(y) for y in data),
+          '>': lambda x, data: any(float(x) > float(y) if isFloat([x, y]) else str(x) > str(y) for y in data),
+          '<=': lambda x, data: any(((pandas.isna(x) and pandas.isna(y)) or float(x) <= float(y) if isFloat([x, y]) else str(x) <= str(y)) for y in data),
+          '>=': lambda x, data: any(((pandas.isna(x) and pandas.isna(y)) or float(x) >= float(y) if isFloat([x, y]) else str(x) >= str(y)) for y in data),
+          'in': lambda x, data: x in data,
+          'notin': lambda x, data: x not in data,
+          'xor': lambda x, data: all(bool(int(y) ^ int(x)) if str(x).isdigit and str(y).isdigit else False for y in data),
+          'nor': lambda x, data: all(not bool(int(y) ^ int(x)) if str(x).isdigit and str(y).isdigit else False for y in data),
+          'and': lambda x, data: all(bool(int(y) & int(x)) if str(x).isdigit and str(y).isdigit else False for y in data),
+          'nand': lambda x, data: all(not bool(int(y) & int(x)) if str(x).isdigit and str(y).isdigit else False for y in data),
+          'match': lambda x, data: all(re.search(pattern, str(x)) is not None for pattern in data),
+          'notmatch': lambda x, data: all(re.search(pattern, str(x)) is None for pattern in data),
+      }
+
+
+      if mode not in filterMap:
+          if not quiet:
+              raise Exception(f'ERROR: could not find condition {mode}')
+      else:
+        if mode in filterMap:
+          return frame.apply(filterMap[mode], data=data)
 
     def transpose(dataframe):
+      _tmp = dataframe.index.name
       return dataframe.transpose()
 
     def dropNaN(dataframe, dropAny=False):
@@ -633,6 +667,16 @@ class DataframeActions:
                     dataframe.iloc[:, applyColumnIds] = dataframe.iloc[:, applyColumnIds].astype(str).apply(
                       lambda s: s.apply(lambda v: getattr(v, padFunc)(max(s.str.len()) if padWidth is None else padWidth, padChar))
                     )
+                elif functionName in ['sed']:
+                  for pattern in functionParams:
+                    parsedPattern = __class__.parseSedPattern(pattern)
+                    if parsedPattern is None or None in parsedPattern:
+                      if not quiet:
+                        print(f'WARNING: invalid sed pattern {pattern} in apply function! A valid pattern is s/pattern/replace/ig', file=sys.stderr)
+                    else:
+                      dataframe.iloc[:, applyColumnIds] = dataframe.iloc[:, applyColumnIds].astype(str).apply(
+                        lambda x: x.apply(lambda v: re.sub(parsedPattern[0], parsedPattern[1], v, count=parsedPattern[2]))
+                      )
                 elif functionName == 'polyfit':
                     try:
                         fitDim = 1 if len(functionParams) == 0 else int(functionParams[0])
@@ -803,7 +847,7 @@ class DataframeActions:
         dataframe = dataframe.T.reset_index()
         dataframe = dataframe.set_index(dataframe.iloc[:, 0]).iloc[:, 1:].T
         dataframe.index.name = l0Name
-        dataframe.columns.name = None
+        dataframe.columns.name = l0Name
       else:
         l0Name = dataframe.index.name
         dataframe = __class__.dropColumnsByIds(dataframe.set_index(dataframe.iloc[:, columnId], append=True), [columnId])
@@ -812,7 +856,7 @@ class DataframeActions:
         dataframe = dataframe.T.reset_index()
         dataframe = dataframe.set_index(dataframe.iloc[:, 0]).iloc[:, 1:].T
         dataframe.index.name = l0Name
-        dataframe.columns.name = None
+        dataframe.columns.name = l0Name
       return __class__.transformColumnIds(__class__.transformRowIds(__class__.transformColumnIds(dataframe, list(range(dataframe.shape[1])), __class__.transformers['float']), ['columns'], __class__.transformers['index']), ['index'], __class__.transformers['index'])
 
     def joinFrames(dataframes, function='index', how='outer'):
@@ -867,7 +911,8 @@ class DataframeActions:
             print(textwrap.fill(pFiles, width=consoleWidth.columns, subsequent_indent=' '))
         print(pSep)
         with pandas.option_context('display.max_rows', None, 'display.max_columns', None, 'display.width', consoleWidth.columns, 'display.max_columns', None, 'display.float_format', None if precision is None else f'{{:.{precision}f}}'.format):
-            print(dataframe)
+          dataframe.columns.name = None
+          print(dataframe)
         print(pSep)
 
     def framesToCSV(dataframes, filenames=['stdout'], separator=None, quiet=False, threads=0, precision=None):
@@ -1525,7 +1570,7 @@ for input in args.input:
 
             if not options.no_columns and not emptyBuf:
                 frame.columns = frame.iloc[0]
-                frame.columns.name = None
+                frame.columns.name = frame.index.name
                 frame = DataframeActions.dropRowsByIds(frame, [0])
 
             if args.debug:
@@ -1536,6 +1581,7 @@ for input in args.input:
 
             frame = DataframeActions.transformColumnIds(frame, ['index'], DataframeActions.transformers['index'])
             frame = DataframeActions.transformRowIds(frame, ['columns'], DataframeActions.transformers['index'])
+            frame.columns.name = frame.index.name
 
             options.frameCount = 1
             options.frameIndex = inputOptions.frameCount
