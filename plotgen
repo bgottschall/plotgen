@@ -46,6 +46,7 @@ import scipy.cluster.hierarchy
 import scipy.spatial.distance
 import sklearn.cluster
 import multiprocessing
+from natsort import natsort_keygen
 
 # import warnings
 # warnings.filterwarnings('error')
@@ -54,18 +55,23 @@ import multiprocessing
 # import csv.Sniffer
 
 __prog__ = 'plotgen'
-__version__ = '0.8.3'
+  __version__ = '0.8.4'
 __url__ = 'https://github.com/bgottschall/plotgen'
 
 
 # All options that are forwared to the plotting script will be filtered through here
 def escapedStr(val: str):
-    return val.translate(str.maketrans({
-        "'": r"\'",
-        "\\": r"\\",
-        "\"": r"\"",
-    }))
+  return val.translate(str.maketrans({
+      "'": r"\'",
+      "\\": r"\\",
+      "\"": r"\"",
+  }))
 
+def getStringNotIn(val):
+  randString = 'RANDOMSTRING'
+  while randString in val:
+    randString = random.choice(string.ascii_lowercase + string.numbers, K=12)
+  return randString
 
 def isFloat(val):
     if isinstance(val, dict):
@@ -334,9 +340,7 @@ class DataframeActions:
       splittedPattern = [None, None, None, None]
       if pattern.startswith('s') and len(pattern)>=4:
         patternDelimiter = pattern[1]
-        doubleEscaper = 'RANDOMSTRING'
-        while doubleEscaper in pattern:
-          doubleEscaper = random.choice(string.ascii_lowercase, K=10)
+        doubleEscaper = getStringNotIn(pattern)
         splittedPattern = [s.replace(doubleEscaper, '\\') for s in re.split(r'(?<!\\)' + re.escape(patternDelimiter) , pattern.replace('\\', doubleEscaper))]
         splittedPattern[0] = None
         if len(splittedPattern) == 4:
@@ -492,7 +496,7 @@ class DataframeActions:
     # By default all data in the frame tries to be float
     def resetIndex(dataframe, transformer = None):
       dataframe = __class__.transformColumnIds(dataframe, ['index'], __class__.transformers['float'] if transformer is None else transformer)
-      dataframe.reset_index(inplace=True)
+      dataframe.reset_index(inplace=True, allow_duplicates=True)
       return dataframe
 
     def resetColumns(dataframe, transformer = None):
@@ -532,9 +536,9 @@ class DataframeActions:
         functionName = function[0]
         if functionName == 'none':
             sortKey = dataframe.reset_index(drop=True).T.reset_index(drop=True).T
-            sortKey = sortKey.sort_values(by=sortKey.index.tolist(), axis=1, ascending=(order == 'asc')).T
+            sortKey = sortKey.sort_values(by=sortKey.index.tolist(), axis=1, ascending=(order == 'asc'), key=natsort_keygen()).T
         else:
-            sortKey = getattr(dataframe, functionName)(axis=0).reset_index(drop=True).sort_values(ascending=(order == 'asc'))
+            sortKey = getattr(dataframe, functionName)(axis=0).reset_index(drop=True).sort_values(ascending=(order == 'asc'), key=natsort_keygen())
         return dataframe.iloc[:, sortKey.index]
 
     def reverseColumns(dataframe):
@@ -562,10 +566,10 @@ class DataframeActions:
 
         sortKey.reset_index(drop=True, inplace=True)
         if sortSeries:
-            sortKey.sort_values(ascending=(order == 'asc'), inplace=True)
+            sortKey.sort_values(ascending=(order == 'asc'), inplace=True, key=natsort_keygen())
         else:
             sortKey.columns = range(sortKey.shape[1])
-            sortKey.sort_values(by=sortKey.columns.to_list(), axis=0, ascending=(order == 'asc'), inplace=True)
+            sortKey.sort_values(by=sortKey.columns.to_list(), axis=0, ascending=(order == 'asc'), inplace=True, key=natsort_keygen())
 
         return dataframe.iloc[sortKey.index, :]
 
@@ -800,7 +804,7 @@ class DataframeActions:
           if kmeanParams['samples']:
             dataframe = pandas.concat([pandas.Series(numpy.unique(kmeans.labels_, return_counts=True)[1], name=specialColumnPrefix + 'samples'), dataframe], axis=1)
           dataframe.index.name = 'cluster'
-          return __class__.transformColumnIds(dataframe, ['index'], __class__.transformers['index'])
+          return __class__.transformColumnIds(dataframe, ['index'], __class__.transformers['index']).map(__class__.transformers['float'])
         else:
           seen = set()
           columnIds = [x for x in columnIds if x not in seen and not seen.add(x)]
@@ -810,7 +814,7 @@ class DataframeActions:
           if len(dataframe.columns) != len(newColumnLabels):
             raise Exception('Grouping dropped "nuisances" columns, and is considered not successful. This is probably due to incompatible data types in columns.')
           dataframe.columns = newColumnLabels
-          return __class__.transformColumnIds(dataframe.set_index(dataframe.iloc[:, 0]).iloc[:, 1:], ['index'], __class__.transformers['index'])
+          return __class__.transformColumnIds(dataframe.set_index(dataframe.iloc[:, 0]).iloc[:, 1:], ['index'], __class__.transformers['index']).map(__class__.transformers['float'])
 
     def stackRowId(dataframe, rowId):
       if rowId == 'columns':
@@ -818,7 +822,7 @@ class DataframeActions:
         dataframe = dataframe.T.set_index(dataframe.T.iloc[:, 0], append=True).T
         dataframe = dataframe.iloc[1:, :].stack(0)
         dataframe = dataframe.to_frame() if not isinstance(dataframe, pandas.DataFrame) else dataframe
-        dataframe = dataframe.reset_index()
+        dataframe = dataframe.reset_index(allow_duplicates=True)
         dataframe = dataframe.set_index(dataframe.iloc[:, 0]).iloc[:, 1:]
         dataframe.columns = ['columns'] + dataframe.columns.tolist()[1:]
         dataframe.index.name = l0Name
@@ -827,7 +831,7 @@ class DataframeActions:
         dataframe = dataframe.T.set_index(dataframe.T.iloc[:, rowId], append=True).T
         dataframe = dataframe.iloc[1:, :].stack(1)
         dataframe = dataframe.to_frame() if not isinstance(dataframe, pandas.DataFrame) else dataframe
-        dataframe = dataframe.reset_index()
+        dataframe = dataframe.reset_index(allow_duplicates=True)
         dataframe = dataframe.set_index(dataframe.iloc[:, 0]).iloc[:, 1:]
         dataframe.index.name = l0Name
       return __class__.transformColumnIds(__class__.transformRowIds(__class__.transformColumnIds(dataframe, list(range(dataframe.shape[1])), __class__.transformers['float']), ['columns'], __class__.transformers['index']), ['index'], __class__.transformers['index'])
@@ -844,7 +848,8 @@ class DataframeActions:
         dataframe = dataframe.set_index(dataframe.iloc[:, 0], append=True).iloc[:, 1:]
         dataframe = dataframe.unstack(0)
         dataframe = dataframe.to_frame() if not isinstance(dataframe, pandas.DataFrame) else dataframe
-        dataframe = dataframe.T.reset_index()
+
+        dataframe = dataframe.T.reset_index(allow_duplicates=True)
         dataframe = dataframe.set_index(dataframe.iloc[:, 0]).iloc[:, 1:].T
         dataframe.index.name = l0Name
         dataframe.columns.name = l0Name
@@ -853,7 +858,7 @@ class DataframeActions:
         dataframe = __class__.dropColumnsByIds(dataframe.set_index(dataframe.iloc[:, columnId], append=True), [columnId])
         dataframe = dataframe.unstack(1)
         dataframe = dataframe.to_frame() if not isinstance(dataframe, pandas.DataFrame) else dataframe
-        dataframe = dataframe.T.reset_index()
+        dataframe = dataframe.T.reset_index(allow_duplicates=True)
         dataframe = dataframe.set_index(dataframe.iloc[:, 0]).iloc[:, 1:].T
         dataframe.index.name = l0Name
         dataframe.columns.name = l0Name
@@ -1553,7 +1558,7 @@ for input in args.input:
             useDelimiter = options.delimiter
             # FUTURE: pyarrow
             # useDelimiter = options.delimiter if options.delimiter is not None else csv.Sniffer().sniff(io.BytesIO(buf).read(4096).decode()).delimiter
-            
+
             emptyBuf = len(buf) == 0 or buf == b'\n'
             frame = pandas.DataFrame() if emptyBuf else pandas.read_csv(io.BytesIO(buf),
                                     sep=useDelimiter,
@@ -2244,7 +2249,13 @@ for input in data:
     multiCategory = False
 
     if options.traceCount == 0:
-      print(f"WARNING: frame {inputFrameIndex} from input files {', '.join(options.filenames)} has no traces")
+      if not args.quiet:
+        print(f"WARNING: frame {inputFrameIndex} from input files {', '.join(options.filenames)} has no traces")
+      continue
+
+    if frame.shape[0] == 0:
+      if not args.quiet:
+        print(f"WARNING: frame {inputFrameIndex} from input files {', '.join(options.filenames)} has no trace data")
       continue
 
     if options.plot not in ['violin', 'box'] and options.distribution_mode in ['aggregated', 'raggregated']:
@@ -2441,6 +2452,12 @@ for input in data:
                       dotMean = None if len(data) == 0 else numpy.mean(data)
                       updateRange(plotRange, [xdata, ydata])
 
+                    if options.category != 'none' and _categories is not None:
+                      _categories = _categories[:min(1, len(_categories))]
+                      dotMeanAxis = [_categories, [traceName]]
+                    else:
+                      dotMeanAxis = [traceName]
+
                 if options.offsetgroups == 'auto':
                     offsetgroup = options.subplotTraceIndex + inputFrameIndex + frameTraceIndex + 1 if args.bar_mode == 'group' else None
                 else:
@@ -2586,8 +2603,8 @@ fig.add_trace(go.Scatter(
     name='mean_{traceName}',
     legendgroup='{traceName}',
     showlegend=False,
-    y={[traceName] if not options.vertical else [precomputeMean] if precomputeMean is not None else [dotMean]},
-    x={[traceName] if options.vertical else [precomputeMean] if precomputeMean is not None else [dotMean]},
+    y={dotMeanAxis if not options.vertical else [precomputeMean] if precomputeMean is not None else [dotMean]},
+    x={dotMeanAxis if options.vertical else [precomputeMean] if precomputeMean is not None else [dotMean]},
 {commentColour}    fillcolor='{fillcolour}',
 {commentColour}    line_color='{markercolour}',
     line_width={options.line_width},
