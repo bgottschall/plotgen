@@ -55,7 +55,7 @@ from natsort import natsort_keygen
 # import csv.Sniffer
 
 __prog__ = 'plotgen'
-__version__ = '0.8.5'
+__version__ = '0.8.6'
 __url__ = 'https://github.com/bgottschall/plotgen'
 
 
@@ -341,7 +341,7 @@ class DataframeActions:
       if pattern.startswith('s') and len(pattern)>=4:
         patternDelimiter = pattern[1]
         doubleEscaper = getStringNotIn(pattern)
-        splittedPattern = [s.replace(doubleEscaper, '\\') for s in re.split(r'(?<!\\)' + re.escape(patternDelimiter) , pattern.replace('\\', doubleEscaper))]
+        splittedPattern = [s.replace(doubleEscaper, '\\' + patternDelimiter) for s in re.split(r'(?<!\\)' + re.escape(patternDelimiter) , pattern.replace('\\' + patternDelimiter, doubleEscaper))]
         splittedPattern[0] = None
         if len(splittedPattern) == 4:
           flags = splittedPattern[3].lower()
