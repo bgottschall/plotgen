@@ -55,7 +55,7 @@ from natsort import natsort_keygen
 # import csv.Sniffer
 
 __prog__ = 'plotgen'
-  __version__ = '0.8.4'
+__version__ = '0.8.5'
 __url__ = 'https://github.com/bgottschall/plotgen'
 
 
