@@ -55,7 +55,7 @@ from natsort import natsort_keygen
 # import csv.Sniffer
 
 __prog__ = 'plotgen'
-__version__ = '0.8.6'
+__version__ = '0.8.7'
 __url__ = 'https://github.com/bgottschall/plotgen'
 
 
@@ -83,7 +83,7 @@ def isFloat(val):
     try:
         float(val)
         return True
-    except ValueError:
+    except (ValueError, TypeError):
         return False
 
 
@@ -308,7 +308,7 @@ def weightedMeanStd(values, weights = None):
 class DataframeActions:
 
     def considerAsNaN(value):
-      return str(value).lower() in ['nan', 'none', 'null', 'zero', 'nodata']
+      return str(value).lower() in ['nan', 'none', 'null', 'zero', 'nodata', '<na>']
 
     # Before plotting index and columns MUST BE string, for plotting those can be anything
     # all other data always tries to be float if not enforced otherwise. Any data from a csv
@@ -768,7 +768,7 @@ class DataframeActions:
       else:
         print('WARNING: grouping n rows/columns with a non-numerical index will use a interpolated version', file=sys.stderr)
         index = dataframe.index
-      dataframe = getattr(dataframe.groupby(numpy.arange(len(dataframe.index)) // n, axis=0), functionName)(numeric_only = False)
+      dataframe = getattr(dataframe.groupby(numpy.arange(len(dataframe.index)) // n, axis=0, dropna=False), functionName)(numeric_only=False)
       if treatIndexAsFloat:
         dataframe = __class__.setIndexColumnByIdx(dataframe, 0, True)
       else:
@@ -783,7 +783,7 @@ class DataframeActions:
       functionName = function[0]
       if functionName == 'kmeans':
         raise Exception('grouping to a single row/column is incompatible with the kmeans function')
-      return getattr(dataframe.apply(pandas.to_numeric, errors='coerce').groupby(lambda _: rowName), functionName)()
+      return getattr(dataframe.apply(pandas.to_numeric, errors='coerce').groupby(lambda _: rowName, dropna=False), functionName)()
 
     def groupByRowIds(dataframe, rowIds, function=['sum'], specialColumnPrefix='_'):
       rowIds = rowIds if isinstance(rowIds, list) else [rowIds]
@@ -810,7 +810,7 @@ class DataframeActions:
           columnIds = [x for x in columnIds if x not in seen and not seen.add(x)]
           newColumnLabels = [dataframe.columns[x] for x in columnIds] + [dataframe.columns[x] for x in range(dataframe.shape[1]) if x not in columnIds]
           dataframe.columns = list(range(dataframe.shape[1]))
-          dataframe = getattr(dataframe.convert_dtypes().groupby(by=columnIds, as_index=False, sort=False), functionName)()
+          dataframe = getattr(dataframe.convert_dtypes().groupby(by=columnIds, as_index=False, sort=False, dropna=False), functionName)()
           if len(dataframe.columns) != len(newColumnLabels):
             raise Exception('Grouping dropped "nuisances" columns, and is considered not successful. This is probably due to incompatible data types in columns.')
           dataframe.columns = newColumnLabels
