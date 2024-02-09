@@ -24,29 +24,7 @@
 
 import argparse
 import argcomplete
-import tempfile
-import pandas
-import numpy
-import os
-import io
-import gc
-import re
-import subprocess
-import sys
-import pickle
-import copy
-import textwrap
-import shutil
-import xopen
-import seaborn
-import random
-import string
-import plotly.figure_factory
-import scipy.cluster.hierarchy
-import scipy.spatial.distance
-import sklearn.cluster
-import multiprocessing
-from natsort import natsort_keygen
+from multiprocessing import cpu_count
 
 # import warnings
 # warnings.filterwarnings('error')
@@ -68,6 +46,7 @@ def escapedStr(val: str):
   }))
 
 def getStringNotIn(val):
+  import random, string
   randString = 'RANDOMSTRING'
   while randString in val:
     randString = random.choice(string.ascii_lowercase + string.numbers, K=12)
@@ -316,12 +295,12 @@ class DataframeActions:
     transformers = {
       'identity': lambda x: x,
       'str' : str,
-      'int' : lambda x: numpy.nan if __class__.considerAsNaN(x) or (isFloat(x) and numpy.isnan(float(x))) else int(float(x)) if isFloat(x) else x,
-      'float': lambda x: numpy.nan if __class__.considerAsNaN(x) or (isFloat(x) and numpy.isnan(float(x))) else float(x) if isFloat(x) else x,
-      'index': lambda x: numpy.nan if __class__.considerAsNaN(x) or (isFloat(x) and numpy.isnan(float(x))) else str((float(x) if numpy.floor(float(x)).astype(int) != float(x) else numpy.floor(float(x)).astype(int)) if isFloat(x) else x),
+      'int' : lambda x: numpy.nan if DataframeActions.considerAsNaN(x) or (isFloat(x) and numpy.isnan(float(x))) else int(float(x)) if isFloat(x) else x,
+      'float': lambda x: numpy.nan if DataframeActions.considerAsNaN(x) or (isFloat(x) and numpy.isnan(float(x))) else float(x) if isFloat(x) else x,
+      'index': lambda x: numpy.nan if DataframeActions.considerAsNaN(x) or (isFloat(x) and numpy.isnan(float(x))) else str((float(x) if numpy.floor(float(x)).astype(int) != float(x) else numpy.floor(float(x)).astype(int)) if isFloat(x) else x),
       'forcefloat': lambda x: numpy.nan if not isFloat(x) else float(x),
       'forceint': lambda x: numpy.nan if not isFloat(x) or numpy.isnan(float(x)) else int(float(x)),
-      'mixed': lambda x: numpy.nan if __class__.considerAsNaN(x) or (isFloat(x) and numpy.isnan(float(x))) else (float(x) if numpy.floor(float(x)).astype(int) != float(x) else numpy.floor(float(x)).astype(int)) if isFloat(x) else str(x), # nan if nan, float if float, int if int else str
+      'mixed': lambda x: numpy.nan if DataframeActions.considerAsNaN(x) or (isFloat(x) and numpy.isnan(float(x))) else (float(x) if numpy.floor(float(x)).astype(int) != float(x) else numpy.floor(float(x)).astype(int)) if isFloat(x) else str(x), # nan if nan, float if float, int if int else str
     }
 
 
@@ -533,6 +512,7 @@ class DataframeActions:
       return __class__.sortColumns(dataframe.T, function, order).T
 
     def sortColumns(dataframe, function=['none'], order='asc'):
+        from natsort import natsort_keygen
         functionName = function[0]
         if functionName == 'none':
             sortKey = dataframe.reset_index(drop=True).T.reset_index(drop=True).T
@@ -553,6 +533,7 @@ class DataframeActions:
       return __class__.sortRowsByColumnIds(dataframe.T, rowIds, function, order, quiet).T
 
     def sortRowsByColumnIds(dataframe, colIds, function=['none'], order='asc', quiet=False):
+        from natsort import natsort_keygen
         functionName = function[0]
         if not isinstance(colIds, list):
             colIds = [colIds]
@@ -640,6 +621,7 @@ class DataframeActions:
                     else:
                       dataframe.iloc[:, applyColumnIds] = getattr(dataframe.iloc[:, applyColumnIds], functionName)(axis=0).values
                 elif functionName == 'kmeans':
+                  import sklearn.cluster
                   kmeanParams = __class__.parseKMeansParameters(functionParams)
                   kmeans = sklearn.cluster.KMeans(n_clusters=kmeanParams['n_clusters'], init=kmeanParams['init'], n_init=kmeanParams['n_init'], max_iter=kmeanParams['max_iter'], tol=kmeanParams['tol']).fit(dataframe.iloc[:, applyColumnIds].to_numpy())
                   if kmeans.n_iter_ >= kmeanParams['max_iter'] and not quiet:
@@ -790,12 +772,13 @@ class DataframeActions:
       rowIds = ['index' if x == 'columns' else x for x in rowIds]
       return __class__.groupByColumnIds(dataframe.T, rowIds, function, specialColumnPrefix).T
 
-    def groupByColumnIds(dataframe, columnIds, function=['sum'], specialColumnPrefix='_'):
+    def groupByColumnIds(dataframe, columnIds, function=['sum'], specialColumnPrefix='_', quiet=False):
         functionName = function[0]
         functionParams = function[1:]
         columnIds = columnIds if isinstance(columnIds, list) else [columnIds]
 
         if functionName == 'kmeans':
+          import sklearn.cluster
           kmeanParams = __class__.parseKMeansParameters(functionParams)
           kmeans = sklearn.cluster.KMeans(n_clusters=kmeanParams['n_clusters'], init=kmeanParams['init'], n_init=kmeanParams['n_init'], max_iter=kmeanParams['max_iter'], tol=kmeanParams['tol']).fit(dataframe.iloc[:, columnIds])
           if kmeans.n_iter_ >= kmeanParams['max_iter'] and not quiet:
@@ -904,6 +887,7 @@ class DataframeActions:
         return newFrames
 
     def printFrames(filenames, dataframe, frameIndex, frameCount, precision=None):
+        import shutil, textwrap
         if not isinstance(filenames, list):
             filenames = [filenames]
         consoleWidth = shutil.get_terminal_size((80, 40))
@@ -964,7 +948,7 @@ parserFileOptions.add_argument("--comment", help="ignores lines starting with (d
 parserFileOptions.add_argument("--delimiter", help="data delimiter (auto detected by default)", type=str, default=None, sticky_default=True, action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--no-columns", help="do not use a column row", default=False, sticky_default=True, nargs=0, sub_action="store_true", action=ChildAction, parent=inputFileArgument)
 parserFileOptions.add_argument("--no-index", help="do not use a index column", default=False, sticky_default=True, nargs=0, sub_action="store_true", action=ChildAction, parent=inputFileArgument)
-parserFileOptions.add_argument("--threads", help="number of threads to decompress files", default=multiprocessing.cpu_count(), type=int, choices=Range(0, None), action=ChildAction, parent=inputFileArgument)
+parserFileOptions.add_argument("--threads", help="number of threads to decompress files", default=cpu_count(), type=int, choices=Range(0, None), action=ChildAction, parent=inputFileArgument)
 
 
 parserFileOptions.add_argument("--index-icolumn", help="set index column by index", type=int, sticky_default=True, choices=Range(None, None), default=None, action=ChildAction, parent=inputFileArgument)
@@ -1140,8 +1124,9 @@ parserViolinPlotOptions.add_argument("--violin-group-gap", help="gap between vio
 
 parserBoxPlotOptions = parser.add_argument_group('box plot options')
 parserBoxPlotOptions.add_argument("--box-mode", choices=['overlay', 'group'], help="choose boxmode (default %(default)s)", default='overlay')
+parserBoxPlotOptions.add_argument("--box-points", help="choose to show box points (not compatible with precomputed boxes, default %(default)s)", default='off', choices=['off', 'all', 'outliers', 'suspectedoutliers'], type=str, action=ChildAction, parent=inputFileArgument)
 parserBoxPlotOptions.add_argument("--box-whisker", help="choose what the box whisker are representing in precomputed box types (e.g. iqr, minmax or p99 to p76 - percentiles, default %(default)s)", default='minmax', type=str, action=ChildAction, parent=inputFileArgument)
-parserBoxPlotOptions.add_argument("--box-type", choices=['raw', 'precomputed'], help="choose whether to precompute boxes or to include all raw values (default %(default)s)", default='precomputed', action=ChildAction, parent=inputFileArgument)
+parserBoxPlotOptions.add_argument("--box-type", choices=['auto', 'raw', 'precomputed'], help="choose whether to precompute boxes or to include all raw values (default %(default)s)", default='auto', action=ChildAction, parent=inputFileArgument)
 parserBoxPlotOptions.add_argument("--box-mean", choices=['none', 'line', 'dot'], help="choose box mean (default %(default)s)", default='dot', action=ChildAction, parent=inputFileArgument)
 parserBoxPlotOptions.add_argument("--box-width", help="box width (default %(default)s)", type=float, default=0, choices=Range(0,), action=ChildAction, parent=inputFileArgument)
 parserBoxPlotOptions.add_argument("--box-gap", help="gap between boxes (default %(default)s) (not compatible with box-width)", type=float, default=0.3, choices=Range(0, 1))
@@ -1286,6 +1271,8 @@ parserOutputOptions.add_argument("--debug", action="store_true", help="output so
 argcomplete.autocomplete(parser)
 args = parser.parse_args()
 
+import sys
+
 violinMode = 'overlay'
 commentColour = ''
 commentBackgroundColour = ''
@@ -1366,6 +1353,20 @@ for input in args.input:
     for opt in ['bar_text_angle', 'line_marker_opacity', 'y_range_from', 'x_range_from', 'y_range_to', 'x_range_to', 'y_tickangle', 'x_tickangle', 'bar_width', 'bar_shift']:
       _check = getattr(options, opt)
       setattr(options, opt, translate[_check] if _check in translate else float(_check))
+    
+    # off or string
+    translate = {'off': False }
+    for opt in ['box_points']:
+      _check = getattr(options, opt)
+      setattr(options, opt, translate[_check] if _check in translate else f"'{_check}'")
+
+
+    if options.box_points is not False and options.box_type == 'precomputed':
+      if not args.quiet:
+        print(f"WARNING: option --box-points {options.box_points} is not compatible with --box-type {options.box_type}. Proceeding with --box-type raw", file=sys.stderr)
+      options.box_type = 'auto'
+
+    options.box_type = options.box_type if not options.box_type == 'auto' else ('raw' if options.box_points is not False else 'precomputed')
 
     options.y_tick0 = None if options.y_tick0 is None else f"'{options.y_tick0}'"
     options.x_tick0 = None if options.x_tick0 is None else f"'{options.x_tick0}'"
@@ -1481,8 +1482,11 @@ defaultPadMargin = False
 
 doneSomething = False
 
+import pandas, numpy, pickle, xopen, os, io, gc, re, copy
+
 stdinBuf = None
 stdinReferenced = 0 if os.path.exists('stdin') else sum([1 if filename == 'stdin' else 0 for input in args.input for filename in input['value']])
+
 
 for input in args.input:
     inputOptions = input['args']
@@ -1559,7 +1563,7 @@ for input in args.input:
             # FUTURE: pyarrow
             # useDelimiter = options.delimiter if options.delimiter is not None else csv.Sniffer().sniff(io.BytesIO(buf).read(4096).decode()).delimiter
 
-            emptyBuf = len(buf) == 0 or buf == b'\n'
+            emptyBuf = len(buf) == 0 or buf == b'\n' or buf == b'""'
             frame = pandas.DataFrame() if emptyBuf else pandas.read_csv(io.BytesIO(buf),
                                     sep=useDelimiter,
                                     header=None,
@@ -1569,6 +1573,7 @@ for input in args.input:
                                     # FUTURE: pyarrow
                                     # engine='pyarrow'
                     )
+            emptyBuf = emptyBuf or frame.shape == (0,0)
 
             if not options.no_index and not emptyBuf:
                 frame.index.name = frame.iloc[0].name
@@ -2134,6 +2139,8 @@ if args.theme == 'palette' and args.colour_debug:
 
 subplotGrid = [{k: int(v) for (k, v) in dim.items()} for dim in subplotGrid]
 
+from seaborn import color_palette
+
 for r in range(1, int(subplotGrid[1]['max']) + 1):
     for c in range(1, int(subplotGrid[0]['max']) + 1):
         if r in subplotGridDefinition and c in subplotGridDefinition[r]:
@@ -2144,7 +2151,7 @@ for r in range(1, int(subplotGrid[1]['max']) + 1):
                 else:
                     subplot['palette_count'] = totalTraceCount if args.per_trace_colours else totalFrameCount if args.per_frame_colours else totalInputCount
                 subplot['palette_count'] = max(0, subplot['palette_count'] - len(subplot['colours']))
-            subplot['colours'].extend([f"rgba({int(255*r)}, {int(255*g)}, {int(255*b)}, {subplot['palette_opacity']})" for (r, g, b) in seaborn.color_palette(subplot['palette'], subplot['palette_count'])])
+            subplot['colours'].extend([f"rgba({int(255*r)}, {int(255*g)}, {int(255*b)}, {subplot['palette_opacity']})" for (r, g, b) in color_palette(subplot['palette'], subplot['palette_count'])])
 
             subplot['cmap'] = None
 
@@ -2159,6 +2166,7 @@ legendEntries = []
 
 plotFd = None
 if (scriptPath is None):
+    import tempfile
     args.script_only = False
     plotFd, plotScriptName = tempfile.mkstemp()
     plotScript = open(plotScriptName, 'w+')
@@ -2586,7 +2594,7 @@ fig.add_trace(go.Box(
     sd={None if precomputeStd is None else [precomputeStd]},
     upperfence={None if precomputeUF is None else [precomputeUF]},
     lowerfence={None if precomputeLF is None else [precomputeLF]},
-    boxpoints=False,
+    boxpoints={options.box_points},
     boxmean={True if options.box_mean == 'line' else False},
     width={options.box_width},
 {commentColour}    fillcolor='{fillcolour}',
@@ -2662,7 +2670,7 @@ fig.add_trace(go.Violin(
             if options.plot == 'heatmap':
               if subplot['cmap'] is None:
                 try:
-                    seaborn_cmap = seaborn.color_palette(subplot['palette'], as_cmap=True)
+                    seaborn_cmap = color_palette(subplot['palette'], as_cmap=True)
                     if subplot['palette_cmap'] in ['log', 'rlog']:
                         cmap_range = numpy.logspace(numpy.log10(0.1), numpy.log10(1.1), 255) - 0.1
                         if subplot['palette_cmap'] == 'rlog':
@@ -2695,6 +2703,10 @@ fig.add_trace(go.Heatmap(
 ), col={options.col}, row={options.row}, secondary_y={options.y_secondary})
               """)
             elif options.plot == 'dendrogram':
+              import plotly.figure_factory
+              import scipy.cluster.hierarchy
+              import scipy.spatial.distance
+
               data = frame.values.tolist()
               labels = list(frame.index)
 
@@ -2940,6 +2952,7 @@ plotScript.write("""
 
 plotScript.close()
 if args.browser or len(args.output) > 0:
+    import subprocess
     cmdLine = ['python3', plotScriptName]
     if args.browser:
         cmdLine.append('--browser')
@@ -2951,6 +2964,7 @@ if scriptPath is None:
     os.close(plotFd)
     os.remove(plotScriptName)
 else:
+    import shutil
     for s in secondaryScriptPaths:
         shutil.copy(scriptPath, s)
     if not args.quiet:
