@@ -33,7 +33,7 @@ from multiprocessing import cpu_count
 # import csv.Sniffer
 
 __prog__ = 'plotgen'
-__version__ = '0.8.7'
+__version__ = '0.8.8'
 __url__ = 'https://github.com/bgottschall/plotgen'
 
 
