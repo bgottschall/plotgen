@@ -5,7 +5,7 @@ pip: dist
 
 dist: setup.py plotgen
 	rm -f dist/*
-	python $(firstword $^) bdist_wheel
+	python3 $(firstword $^) bdist_wheel
 
 tests plots:
 	$(MAKE) -C $@
