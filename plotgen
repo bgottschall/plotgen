@@ -33,7 +33,7 @@ from multiprocessing import cpu_count
 # import csv.Sniffer
 
 __prog__ = 'plotgen'
-__version__ = '0.8.8'
+__version__ = '0.8.9'
 __url__ = 'https://github.com/bgottschall/plotgen'
 
 
@@ -2150,8 +2150,9 @@ for r in range(1, int(subplotGrid[1]['max']) + 1):
                     subplot['palette_count'] = subplot['traces'] if args.per_trace_colours else subplot['frames'] if args.per_frame_colours else 1
                 else:
                     subplot['palette_count'] = totalTraceCount if args.per_trace_colours else totalFrameCount if args.per_frame_colours else totalInputCount
-                subplot['palette_count'] = max(0, subplot['palette_count'] - len(subplot['colours']))
-            subplot['colours'].extend([f"rgba({int(255*r)}, {int(255*g)}, {int(255*b)}, {subplot['palette_opacity']})" for (r, g, b) in color_palette(subplot['palette'], subplot['palette_count'])])
+            
+            paletteExtend = max(0, subplot['palette_count'] - len(subplot['colours']))
+            subplot['colours'].extend([f"rgba({int(255*r)}, {int(255*g)}, {int(255*b)}, {subplot['palette_opacity']})" for (r, g, b) in color_palette(subplot['palette'], paletteExtend)])
 
             subplot['cmap'] = None
 
