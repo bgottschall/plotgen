@@ -33,7 +33,7 @@ from multiprocessing import cpu_count
 # import csv.Sniffer
 
 __prog__ = 'plotgen'
-__version__ = '0.8.11'
+__version__ = '0.8.12'
 __url__ = 'https://github.com/bgottschall/plotgen'
 
 
@@ -539,9 +539,11 @@ class DataframeActions:
             colIds = [colIds]
         sortSeries = 'index' in colIds or functionName != 'none'
         if 'index' in colIds:
-            sortKey = pandas.to_numeric(dataframe.index, errors="ignore").to_series()
+          sortKey = dataframe.index
+          sortKey = sortKey.map(__class__.transformers['float']).to_series()
         else:
-            sortKey = dataframe.iloc[:, colIds].apply(pandas.to_numeric, errors="ignore")
+            sortKey = dataframe.iloc[:, colIds]
+            sortKey = sortKey.map(__class__.transformers['float'])
             if functionName != 'none':
                 sortKey = getattr(sortKey, functionName)(axis=1, numeric_only=True)
 
@@ -630,11 +632,11 @@ class DataframeActions:
                 elif functionName == 'append':
                     if len(functionParams) == 0:
                       raise Exception('ERROR: no parameters given for function append, skipping')
-                    dataframe.iloc[:, applyColumnIds] = (dataframe.iloc[:, applyColumnIds].astype(str) + ''.join([str(x) for x in functionParams])).apply(pandas.to_numeric, errors='ignore')
+                    dataframe.iloc[:, applyColumnIds] = (dataframe.iloc[:, applyColumnIds].astype(str) + ''.join([str(x) for x in functionParams])).map(__class__.transformers['float'])
                 elif functionName == 'prepend':
                     if len(functionParams) == 0:
                       raise Exception('ERROR: no parameters given for function prepend, skipping')
-                    dataframe.iloc[:, applyColumnIds] = (''.join([str(x) for x in functionParams]) + dataframe.iloc[:, applyColumnIds].astype(str)).apply(pandas.to_numeric, errors='ignore')
+                    dataframe.iloc[:, applyColumnIds] = (''.join([str(x) for x in functionParams]) + dataframe.iloc[:, applyColumnIds].astype(str)).map(__class__.transformers['float'])
                 elif functionName == 'set':
                     if len(functionParams) < 1:
                       raise Exception('ERROR: function set requires a parameters')
@@ -704,7 +706,7 @@ class DataframeActions:
                     if functionName == 'concat':
                         for targetColumnIdx in targetColumnIds:
                             for applyColumnIdx in applyColumnIds:
-                                dataframe.iloc[:, targetColumnIdx] = dataframe.iloc[:, targetColumnIdx].astype(str).str.cat(dataframe.iloc[:, applyColumnIdx].astype(str), join='right', sep=str(functionParams[0]) if len(functionParams) > 0 else '').apply(pandas.to_numeric, errors='ignore')
+                                dataframe.iloc[:, targetColumnIdx] = dataframe.iloc[:, targetColumnIdx].astype(str).str.cat(dataframe.iloc[:, applyColumnIdx].astype(str), join='right', sep=str(functionParams[0]) if len(functionParams) > 0 else '').map(__class__.transformers['float'])
                     elif functionName == 'copy':
                         if len(applyColumnIds) > 0 and not quiet:
                             print('WARNING: only the last column/row has an effect with apply function copy!', file=sys.stderr)
@@ -1353,7 +1355,7 @@ for input in args.input:
     for opt in ['bar_text_angle', 'line_marker_opacity', 'y_range_from', 'x_range_from', 'y_range_to', 'x_range_to', 'y_tickangle', 'x_tickangle', 'bar_width', 'bar_shift']:
       _check = getattr(options, opt)
       setattr(options, opt, translate[_check] if _check in translate else float(_check))
-    
+
     # off or string
     translate = {'off': False }
     for opt in ['box_points']:
@@ -1483,6 +1485,8 @@ defaultPadMargin = False
 doneSomething = False
 
 import pandas, numpy, pickle, xopen, os, io, gc, re, copy
+pandas.set_option('future.no_silent_downcasting', True)
+pandas.set_option('copy_on_write', True)
 
 stdinBuf = None
 stdinReferenced = 0 if os.path.exists('stdin') else sum([1 if filename == 'stdin' else 0 for input in args.input for filename in input['value']])
@@ -1542,9 +1546,7 @@ for input in args.input:
             elif (not isinstance(frame, pandas.DataFrame)):
                 raise Exception(f'pickle file {filename} is not a pandas data frame!')
             else:
-                frame = frame.apply(pandas.to_numeric, errors='ignore')
-                frame = frame.map(lambda x: float(x) if isFloat(x) else numpy.nan if isinstance(x, str) and x.lower() in DataframeActions.considerAsNaN else x)
-
+                frame = frame.map(DataframeActions.transformers['float'])
                 frame = DataframeActions.transformColumnIds(frame, ['index'], DataframeActions.transformers['index'])
                 frame = DataframeActions.transformRowIds(frame, ['columns'], DataframeActions.transformers['index'])
 
@@ -1586,7 +1588,6 @@ for input in args.input:
             if args.debug:
               print("DEBUG: parsing number formats", file=sys.stderr)
             # Relatively slow, though I don't see a way around it
-            frame = frame.apply(pandas.to_numeric, errors='ignore')
             frame = frame.map(DataframeActions.transformers['float'])
 
             frame = DataframeActions.transformColumnIds(frame, ['index'], DataframeActions.transformers['index'])
@@ -2150,7 +2151,7 @@ for r in range(1, int(subplotGrid[1]['max']) + 1):
                     subplot['palette_count'] = subplot['traces'] if args.per_trace_colours else subplot['frames'] if args.per_frame_colours else 1
                 else:
                     subplot['palette_count'] = totalTraceCount if args.per_trace_colours else totalFrameCount if args.per_frame_colours else totalInputCount
-            
+
             paletteExtend = max(0, subplot['palette_count'] - len(subplot['colours']))
             subplot['colours'].extend([f"rgba({int(255*r)}, {int(255*g)}, {int(255*b)}, {subplot['palette_opacity']})" for (r, g, b) in color_palette(subplot['palette'], paletteExtend)])
 
