@@ -20,6 +20,6 @@ setup(
         'Operating System :: OS Independent'
         ],
    keywords='tables graph plot parser plotly',
-   python_requires='>=3.7',
+   python_requires='>=3.9',
    install_requires=open(os.path.join(os.path.dirname(__file__), 'requirements.txt')).readlines(),
 )

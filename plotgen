@@ -33,7 +33,7 @@ from multiprocessing import cpu_count
 # import csv.Sniffer
 
 __prog__ = 'plotgen'
-__version__ = '0.8.12'
+__version__ = '0.8.13'
 __url__ = 'https://github.com/bgottschall/plotgen'
 
 
@@ -57,7 +57,8 @@ def isFloat(val):
         return all(isFloat(x) for x in val.values())
     if isinstance(val, list):
         return all(isFloat(x) for x in val)
-    if val is None:
+    # Explicitly do not allow digit grouping using '_'
+    if val is None or (isinstance(val, str) and '_' in val):
         return False
     try:
         float(val)
