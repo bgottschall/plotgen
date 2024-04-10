@@ -33,7 +33,7 @@ from multiprocessing import cpu_count
 # import csv.Sniffer
 
 __prog__ = 'plotgen'
-__version__ = '0.8.13'
+__version__ = '0.8.14'
 __url__ = 'https://github.com/bgottschall/plotgen'
 
 
@@ -1296,8 +1296,8 @@ elif (args.per_frame_colours):
     args.per_input_colours = False
 
 # Sanitize arguments
-for input in args.input:
-    options = input['args']
+for inputArgs in args.input:
+    options = inputArgs['args']
     # options.ignore_icolumns = list(set(options.ignore_icolumns))
     # options.ignore_columns = list(set(options.ignore_columns))
 
@@ -1490,12 +1490,12 @@ pandas.set_option('future.no_silent_downcasting', True)
 pandas.set_option('copy_on_write', True)
 
 stdinBuf = None
-stdinReferenced = 0 if os.path.exists('stdin') else sum([1 if filename == 'stdin' else 0 for input in args.input for filename in input['value']])
+stdinReferenced = 0 if os.path.exists('stdin') else sum([1 if filename == 'stdin' else 0 for inputArgs in args.input for filename in inputArgs['value']])
 
 
-for input in args.input:
-    inputOptions = input['args']
-    inputFileNames = input['value']
+for inputArgs in args.input:
+    inputOptions = inputArgs['args']
+    inputFileNames = inputArgs['value']
     inputOptions.filenames = inputFileNames
     inputOptions.traceCount = 0
     inputOptions.frameCount = 0
@@ -1618,7 +1618,7 @@ for input in args.input:
 
     focusedFrames = list(range(len(inputFrames)))
 
-    for (optionName, optionValue) in input['args'].ordered_args:
+    for (optionName, optionValue) in inputArgs['args'].ordered_args:
         multiFrameActions = ['print_precision', 'select_mode', 'normalise_function', 'sort_function', 'sort_order', 'add_at', 'add_function', 'apply_mode', 'apply_function', 'group_function', 'join', 'file', 'pickle', 'split_column', 'split_icolumn', 'split_row', 'split_irow', 'focus_iframes', 'defocus_iframes', 'focus_frames', 'defocus_frames', 'select_iframes', 'select_frames', 'ignore_iframes', 'ignore_frames', 'frame_names']
         if optionName not in multiFrameActions:
             for _index, (frameOptions, frame) in enumerate(inputFrames):
@@ -2096,7 +2096,6 @@ for input in args.input:
 
     gc.collect()
 
-
 scriptPath = None
 secondaryScriptPaths = []
 # Separate python outputs from actual output put the first script
@@ -2250,23 +2249,19 @@ frameIndex = 0
 traceIndex = 0
 inputIndex = 0
 
-for input in data:
-    options = input['options']
-    frames = input['frames']
+for inputData in data:
+    options = inputData['options']
+    frames = inputData['frames']
     subplot = subplotGridDefinition[options.row][options.col]
     plotRange = []
+    multiCategory = False
     inputTraceIndex = 0
     inputFrameIndex = 0
-    multiCategory = False
 
     if options.traceCount == 0:
       if not args.quiet:
-        print(f"WARNING: frame {inputFrameIndex} from input files {', '.join(options.filenames)} has no traces")
-      continue
-
-    if frame.shape[0] == 0:
-      if not args.quiet:
-        print(f"WARNING: frame {inputFrameIndex} from input files {', '.join(options.filenames)} has no trace data")
+        print(f"WARNING: input files {', '.join(options.filenames)} did not result in any traces")
+      inputIndex += 1
       continue
 
     if options.plot not in ['violin', 'box'] and options.distribution_mode in ['aggregated', 'raggregated']:
@@ -2766,8 +2761,6 @@ fig.add_trace({sDendrogramTrace}, col={options.col}, row={options.row}, secondar
 
             else:
               raise f'ERROR: unknown plot type {options.plot}'
-
-
 
         inputIndex += 1
         if subplot['palette_local']:
