@@ -33,7 +33,7 @@ from multiprocessing import cpu_count
 # import csv.Sniffer
 
 __prog__ = 'plotgen'
-__version__ = '0.8.14'
+__version__ = '0.8.15'
 __url__ = 'https://github.com/bgottschall/plotgen'
 
 
@@ -1187,6 +1187,8 @@ parserPlotAxisOptions.add_argument("--y-grid-colour", help="set y-grid colour", 
 parserPlotAxisOptions.add_argument("--x-grid-colour", help="set x-grid colour", type=escapedStr, default=None, action=ChildAction, parent=inputFileArgument)
 parserPlotAxisOptions.add_argument("--y-colour", help="set y-axis colour", type=escapedStr, default=None, action=ChildAction, parent=inputFileArgument)
 parserPlotAxisOptions.add_argument("--x-colour", help="set x-axis colour", type=escapedStr, default=None, action=ChildAction, parent=inputFileArgument)
+parserPlotAxisOptions.add_argument("--y-tick-colour", help="set y-tick colour", type=escapedStr, default=None, action=ChildAction, parent=inputFileArgument)
+parserPlotAxisOptions.add_argument("--x-tick-colour", help="set x-tick colour", type=escapedStr, default=None, action=ChildAction, parent=inputFileArgument)
 parserPlotAxisOptions.add_argument("--y-line-width", help="set y-axis line width (default %(default)s)", type=float, choices=Range(0, None), default=0, action=ChildAction, parent=inputFileArgument)
 parserPlotAxisOptions.add_argument("--x-line-width", help="set x-axis line width (default %(default)s)", type=float, choices=Range(0, None), default=0, action=ChildAction, parent=inputFileArgument)
 parserPlotAxisOptions.add_argument("--y-show-grid", help="set the visibility of the y-grid (default %(default)s)", choices=['auto', 'on', 'off'], default='auto', action=ChildAction, parent=inputFileArgument)
@@ -1334,12 +1336,15 @@ for inputArgs in args.input:
     if options.colour_cycle is None:
         options.colour_cycle = 'global'
 
-    options.y_grid_colour = f"'{options.y_grid_colour}'" if options.y_grid_colour is not None else f"'{options.grid_colour}'" if options.grid_colour is not None else None
-    options.x_grid_colour = f"'{options.x_grid_colour}'" if options.x_grid_colour is not None else f"'{options.grid_colour}'" if options.grid_colour is not None else None
-    options.x_colour = f"'{options.y_colour}'" if options.y_colour is not None else None
-    options.y_colour = f"'{options.x_colour}'" if options.x_colour is not None else None
+    options.y_autorange = 'off' if options.plot == 'dendrogram' and options.y_autorange is not None and not options.vertical else options.y_autorange
+    options.x_autorange = 'off' if options.plot == 'dendrogram' and options.x_autorange is not None and not options.horizontal else options.x_autorange
+    options.y_grid_colour = options.grid_colour if options.y_grid_colour is None else options.y_grid_colour
+    options.x_grid_colour = options.grid_colour if options.x_grid_colour is None else options.x_grid_colour
     options.y_line_width_forced = 'y_line_width' in [i for (i, _) in options.ordered_args]
     options.x_line_width_forced = 'x_line_width' in [i for (i, _) in options.ordered_args]
+
+    options.y_autorange = f"'{options.y_autorange}'" if options.y_autorange not in ['on', 'off', None] else False if options.y_autorange == 'off' or options.y_range_to is not None or options.y_range_from is not None else True
+    options.x_autorange = f"'{options.x_autorange}'" if options.x_autorange not in ['on', 'off', None] else False if options.x_autorange == 'off' or options.x_range_to is not None or options.x_range_from is not None else True
 
     # auto, on or off
     translate = {'auto': None, 'on': True, 'off': False}
@@ -1363,6 +1368,10 @@ for inputArgs in args.input:
       _check = getattr(options, opt)
       setattr(options, opt, translate[_check] if _check in translate else f"'{_check}'")
 
+    # None or string
+    for opt in ['x_colour', 'y_colour', 'x_tick_colour', 'y_tick_colour', 'x_grid_colour', 'y_grid_colour', 'x_tick0', 'y_tick0', 'x_dtick', 'y_dtick']:
+      _check = getattr(options, opt)
+      setattr(options, opt, None if _check is None else f"'{_check}'")
 
     if options.box_points is not False and options.box_type == 'precomputed':
       if not args.quiet:
@@ -1371,22 +1380,11 @@ for inputArgs in args.input:
 
     options.box_type = options.box_type if not options.box_type == 'auto' else ('raw' if options.box_points is not False else 'precomputed')
 
-    options.y_tick0 = None if options.y_tick0 is None else f"'{options.y_tick0}'"
-    options.x_tick0 = None if options.x_tick0 is None else f"'{options.x_tick0}'"
-    options.y_dtick = None if options.y_dtick is None else f"'{options.y_dtick}'"
-    options.x_dtick = None if options.x_dtick is None else f"'{options.x_dtick}'"
-
-    options.y_autorange = 'off' if options.plot == 'dendrogram' and options.y_autorange is not None and not options.vertical else options.y_autorange
-    options.x_autorange = 'off' if options.plot == 'dendrogram' and options.x_autorange is not None and not options.horizontal else options.x_autorange
-    options.y_autorange = f"'{options.y_autorange}'" if options.y_autorange not in ['on', 'off', None] else False if options.y_autorange == 'off' or options.y_range_to is not None or options.y_range_from is not None else True
-    options.x_autorange = f"'{options.x_autorange}'" if options.x_autorange not in ['on', 'off', None] else False if options.x_autorange == 'off' or options.x_range_to is not None or options.x_range_from is not None else True
-
     if options.legend_entries is None:
         if args.theme != 'palette':
             options.legend_entries = 'all'
         else:
             options.legend_entries = 'unique'
-
 
     if options.plot != 'line':
         # If explicitly set the range-to the automatic ranging would start at the
@@ -1397,7 +1395,6 @@ for inputArgs in args.input:
             options.x_range_from = 0
 
     violinMode = options.violin_mode
-
 
     if options.colour_scale_orientation == 'horizontal':
       options.colour_scale_orientation == 'h'
@@ -2800,7 +2797,7 @@ fig.add_trace({sDendrogramTrace}, col={options.col}, row={options.row}, secondar
     automargin={True if options.y_title_standoff is None else False},
     {'# ' if options.y_title is None else ''}title_text='{options.y_title}',
     title_standoff={options.y_title_standoff},
-    tickcolor={options.y_colour},
+    tickcolor={options.y_tick_colour},
     tickformat='{options.y_tick_format}',
     ticksuffix='{options.y_tick_suffix}',
     tickprefix='{options.y_tick_prefix}',
@@ -2833,7 +2830,7 @@ fig.add_trace({sDendrogramTrace}, col={options.col}, row={options.row}, secondar
     automargin={True if options.x_title_standoff is None else False},
     {'# ' if options.x_title is None else ''}title_text='{options.x_title}',
     title_standoff={options.x_title_standoff},
-    tickcolor={options.x_colour},
+    tickcolor={options.x_tick_colour},
     tickformat='{options.x_tick_format}',
     ticksuffix='{options.x_tick_suffix}',
     tickprefix='{options.x_tick_prefix}',
