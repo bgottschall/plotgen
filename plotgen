@@ -33,7 +33,7 @@ from multiprocessing import cpu_count
 # import csv.Sniffer
 
 __prog__ = 'plotgen'
-__version__ = '0.8.15'
+__version__ = '0.8.16'
 __url__ = 'https://github.com/bgottschall/plotgen'
 
 
@@ -1336,15 +1336,10 @@ for inputArgs in args.input:
     if options.colour_cycle is None:
         options.colour_cycle = 'global'
 
-    options.y_autorange = 'off' if options.plot == 'dendrogram' and options.y_autorange is not None and not options.vertical else options.y_autorange
-    options.x_autorange = 'off' if options.plot == 'dendrogram' and options.x_autorange is not None and not options.horizontal else options.x_autorange
     options.y_grid_colour = options.grid_colour if options.y_grid_colour is None else options.y_grid_colour
     options.x_grid_colour = options.grid_colour if options.x_grid_colour is None else options.x_grid_colour
     options.y_line_width_forced = 'y_line_width' in [i for (i, _) in options.ordered_args]
     options.x_line_width_forced = 'x_line_width' in [i for (i, _) in options.ordered_args]
-
-    options.y_autorange = f"'{options.y_autorange}'" if options.y_autorange not in ['on', 'off', None] else False if options.y_autorange == 'off' or options.y_range_to is not None or options.y_range_from is not None else True
-    options.x_autorange = f"'{options.x_autorange}'" if options.x_autorange not in ['on', 'off', None] else False if options.x_autorange == 'off' or options.x_range_to is not None or options.x_range_from is not None else True
 
     # auto, on or off
     translate = {'auto': None, 'on': True, 'off': False}
@@ -1377,6 +1372,11 @@ for inputArgs in args.input:
       if not args.quiet:
         print(f"WARNING: option --box-points {options.box_points} is not compatible with --box-type {options.box_type}. Proceeding with --box-type raw", file=sys.stderr)
       options.box_type = 'auto'
+
+    options.y_autorange = 'off' if options.plot == 'dendrogram' and options.y_autorange is not None and not options.vertical else options.y_autorange
+    options.x_autorange = 'off' if options.plot == 'dendrogram' and options.x_autorange is not None and not options.horizontal else options.x_autorange
+    options.y_autorange = f"'{options.y_autorange}'" if options.y_autorange not in ['on', 'off', None] else False if options.y_autorange == 'off' or options.y_range_to is not None or options.y_range_from is not None else True
+    options.x_autorange = f"'{options.x_autorange}'" if options.x_autorange not in ['on', 'off', None] else False if options.x_autorange == 'off' or options.x_range_to is not None or options.x_range_from is not None else True
 
     options.box_type = options.box_type if not options.box_type == 'auto' else ('raw' if options.box_points is not False else 'precomputed')
 
