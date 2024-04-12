@@ -33,7 +33,7 @@ from multiprocessing import cpu_count
 # import csv.Sniffer
 
 __prog__ = 'plotgen'
-__version__ = '0.8.16'
+__version__ = '0.8.17'
 __url__ = 'https://github.com/bgottschall/plotgen'
 
 
@@ -310,7 +310,7 @@ class DataframeActions:
       'specialSelfFunctions': ['set', 'cset', 'polyfit', 'append' , 'prepend', 'ljust', 'rjust', 'cjust', 'kmeans', 'sed'],
       'amidComputeFunctions': ['add', 'sub', 'mul', 'div', 'truediv', 'floordiv', 'mod', 'pow', 'radd', 'rsub', 'rmul', 'rdiv', 'rtruediv', 'rfloordiv', 'rmod', 'rpow', 'lt', 'gt', 'le', 'ge', 'ne', 'eq', 'min', 'max'],
       'onlyAmidComputeFunctions' : ['concat', 'copy', 'kmeans_labels'],
-      'soloComputeFunctions': ['sum', 'mean', 'median', 'std', 'var', 'count', 'skew', 'mad', 'min', 'max'],
+      'soloComputeFunctions': ['sum', 'mean', 'median', 'gmean', 'std', 'var', 'count', 'skew', 'mad', 'min', 'max', 'first', 'last'],
       'specialGroupFunctions' : ['kmeans'],
       'nonComputeFunctions': ['set', 'cset', 'append', 'prepend', 'ljust', 'rjust', 'cjust', 'concat', 'copy', 'sed', 'kmeans_labels'] + list(transformers.keys())
     }
@@ -518,6 +518,9 @@ class DataframeActions:
         if functionName == 'none':
             sortKey = dataframe.reset_index(drop=True).T.reset_index(drop=True).T
             sortKey = sortKey.sort_values(by=sortKey.index.tolist(), axis=1, ascending=(order == 'asc'), key=natsort_keygen()).T
+        elif functionName == 'gmean':
+            from scipy.stats import gmean
+            sortKey = dataframe.apply(lambda x: gmean(x.dropna()), axis=0).reset_index(drop=True).sort_values(ascending=(order == 'asc'), key=natsort_keygen())
         else:
             sortKey = getattr(dataframe, functionName)(axis=0).reset_index(drop=True).sort_values(ascending=(order == 'asc'), key=natsort_keygen())
         return dataframe.iloc[:, sortKey.index]
@@ -575,7 +578,12 @@ class DataframeActions:
       if functionName not in __class__.functions['soloComputeFunctions']:
         raise Exception(f'Normalise function \'{functionName}\' not found!')
 
-      normSeries = getattr(dataframe.iloc[:, colIds].apply(pandas.to_numeric, errors='coerce'), functionName)(axis=0)
+      if functionName == 'gmean':
+        from scipy.stats import gmean
+        normSeries = dataframe.iloc[:, colIds].apply(pandas.to_numeric, errors='coerce').apply(lambda x: gmean(x.dropna()), axis=0)
+      else:
+        normSeries = getattr(dataframe.iloc[:, colIds].apply(pandas.to_numeric, errors='coerce'), functionName)(axis=0)
+
       dataframe.iloc[:, colIds] = dataframe.iloc[:, colIds].div(normSeries, axis=1)
       return dataframe
 
@@ -732,6 +740,10 @@ class DataframeActions:
         if len(functionParams) == 0:
           raise Exception('--add-function set requires one parameter as set constant')
         newCol = pandas.Series(data=[functionParams[0]] * dataframe.shape[0], name=name, index=dataframe.index)
+      elif functionName == 'gmean':
+        from scipy.stats import gmean
+        newCol = dataframe.apply(pandas.to_numeric, errors='coerce').apply(lambda x: gmean(x.dropna()), axis=1)
+        newCol.name = name
       else:
         newCol = getattr(dataframe.apply(pandas.to_numeric, errors='coerce'), functionName)(axis=1)
         newCol.name = name
@@ -796,7 +808,11 @@ class DataframeActions:
           columnIds = [x for x in columnIds if x not in seen and not seen.add(x)]
           newColumnLabels = [dataframe.columns[x] for x in columnIds] + [dataframe.columns[x] for x in range(dataframe.shape[1]) if x not in columnIds]
           dataframe.columns = list(range(dataframe.shape[1]))
-          dataframe = getattr(dataframe.convert_dtypes().groupby(by=columnIds, as_index=False, sort=False, dropna=False), functionName)()
+          if functionName == 'gmean':
+            from scipy.stats import gmean
+            dataframe = dataframe.convert_dtypes().groupby(by=columnIds, as_index=False, sort=False, dropna=False).aggregate(lambda x: gmean(x.dropna()))
+          else:
+            dataframe = getattr(dataframe.convert_dtypes().groupby(by=columnIds, as_index=False, sort=False, dropna=False), functionName)()
           if len(dataframe.columns) != len(newColumnLabels):
             raise Exception('Grouping dropped "nuisances" columns, and is considered not successful. This is probably due to incompatible data types in columns.')
           dataframe.columns = newColumnLabels
