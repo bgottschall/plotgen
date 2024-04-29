@@ -32,8 +32,10 @@ from multiprocessing import cpu_count
 # FUTURE: pyarrow
 # import csv.Sniffer
 
+# TODO: replace iloc[...] = with isetitem(...)
+
 __prog__ = 'plotgen'
-__version__ = '0.8.17'
+__version__ = '0.8.18'
 __url__ = 'https://github.com/bgottschall/plotgen'
 
 
@@ -715,7 +717,7 @@ class DataframeActions:
                     if functionName == 'concat':
                         for targetColumnIdx in targetColumnIds:
                             for applyColumnIdx in applyColumnIds:
-                                dataframe.iloc[:, targetColumnIdx] = dataframe.iloc[:, targetColumnIdx].astype(str).str.cat(dataframe.iloc[:, applyColumnIdx].astype(str), join='right', sep=str(functionParams[0]) if len(functionParams) > 0 else '').map(__class__.transformers['float'])
+                                dataframe.isetitem(targetColumnIdx, dataframe.iloc[:, targetColumnIdx].astype("string").str.cat(dataframe.iloc[:, applyColumnIdx].astype("string"), join='right', sep=str(functionParams[0]) if len(functionParams) > 0 else '').map(__class__.transformers['float']))
                     elif functionName == 'copy':
                         if len(applyColumnIds) > 0 and not quiet:
                             print('WARNING: only the last column/row has an effect with apply function copy!', file=sys.stderr)
