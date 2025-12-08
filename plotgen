@@ -35,7 +35,7 @@ from multiprocessing import cpu_count
 # TODO: replace iloc[...] = with isetitem(...)
 
 __prog__ = 'plotgen'
-__version__ = '0.8.19'
+__version__ = '0.8.20'
 __url__ = 'https://github.com/bgottschall/plotgen'
 
 
@@ -358,7 +358,7 @@ class DataframeActions:
       res['samples'] = True if res['samples'].lower() in ['yes', 'true', '1'] else False
       return res
 
-    conditions = ['=', '!=', '<', '>', '<=', '>=', 'in', 'notin', 'xor', 'nor', 'and', 'nand']
+    conditions = ['=', '!=', '<', '>', '<=', '>=', 'in', 'notin', 'xor', 'nor', 'and', 'nand', 'match', 'notmatch']
 
     def filterFunction(frame, data, mode, quiet=False):
       regexMap = {
@@ -1280,8 +1280,9 @@ parserPlotGlobalOptions.add_argument("--margin-t", help="sets top margin", type=
 parserPlotGlobalOptions.add_argument("--margin-b", help="sets bottom margin", type=int, choices=Range(0, None), default=None)
 parserPlotGlobalOptions.add_argument("--margin-pad", help="sets padding", type=int, choices=Range(0, None), default=None)
 
-parserPlotGlobalOptions.add_argument("--width", help="plot width", type=int, default=1000)
-parserPlotGlobalOptions.add_argument("--height", help="plot height", type=int)
+parserPlotGlobalOptions.add_argument("--width", help="plot width (default %(default)s)", type=int, default=960)
+parserPlotGlobalOptions.add_argument("--height", help="plot height (default %(default)s)", type=int, default=540)
+parserPlotGlobalOptions.add_argument("--scale", help="plot scale (default %(default)s)", type=float, choices=Range(0, None), default=1.0)
 
 parserOutputOptions = parser.add_argument_group('output options')
 parserOutputOptions.add_argument("--addon", help="Specify addon behavior. 'on' will load specified addon files or filename_addon.py if found. 'off' does not load any addon files.", default='on', choices=['on', 'off'])
@@ -2219,6 +2220,7 @@ parser.add_argument("--font-colour", help="font colour (default %(default)s)", d
 parser.add_argument("--font-family", help="font family (default %(default)s)", default='{args.font_family}')
 parser.add_argument("--width", help="width of output file (default %(default)s)", type=int, default={args.width})
 parser.add_argument("--height", help="height of output (default %(default)s)", type=int, default={args.height})
+parser.add_argument("--scale", help="scale of output (default %(default)s)", type=float, default={args.scale})
 parser.add_argument("--output", "-o", help="output file (html, png, jpeg, pdf...) (default %(default)s)", type=str, nargs="+", default={args.output})
 parser.add_argument("--addon", help=f"execute specified addon files or {{filename}}_addon{{fileext}} if found (default %(default)s)", choices=["on", "off"], default="{args.addon}")
 parser.add_argument("--addon-files", help=f"specify addon files to source when addon is enabled (default %(default)s)", default={args.addon_files}, nargs='+')
@@ -2943,7 +2945,7 @@ if len(args.output) > 0:
         if outputFormat == 'html':
             fig.write_html(output)
         else:
-            fig.write_image(output, width=args.width, height=args.height)
+            fig.write_image(output, width=args.width, height=args.height, scale=args.scale)
 
         if not args.quiet:
             print(f'Saved to {output}')
