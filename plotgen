@@ -35,7 +35,7 @@ from multiprocessing import cpu_count
 # TODO: replace iloc[...] = with isetitem(...)
 
 __prog__ = 'plotgen'
-__version__ = '0.8.20'
+__version__ = '0.8.21'
 __url__ = 'https://github.com/bgottschall/plotgen'
 
 
@@ -1138,7 +1138,7 @@ parserBarPlotOptions.add_argument("--bar-group-gap", help="set bar group gap (de
 parserViolinPlotOptions = parser.add_argument_group('violin plot options')
 parserViolinPlotOptions.add_argument("--violin-mode", help="choose violinmode (default %(default)s)", choices=['overlay', 'group', 'halfoverlay', 'halfgroup', 'halfhalf', 'poshalfgroup', 'neghalfgroup', 'poshalf', 'neghalf'], default='overlay', action=ChildAction, parent=inputFileArgument)
 parserViolinPlotOptions.add_argument("--violin-mean", help="choose violin mean (default %(default)s)", choices=['none', 'line', 'box'], default='none', action=ChildAction, parent=inputFileArgument)
-parserViolinPlotOptions.add_argument("--violin-points", help="set points mode for (default %(default)s)", type=str, default='none', choices=['all', 'outliers', 'suspectedoutliers', 'none'], action=ChildAction, parent=inputFileArgument)
+parserViolinPlotOptions.add_argument("--violin-points", help="set points mode for (default %(default)s)", type=str, default='none', choices=['all', 'outliers', 'suspectedoutliers', 'off'], action=ChildAction, parent=inputFileArgument)
 parserViolinPlotOptions.add_argument("--violin-jitter", help="set jitter for violin points (default %(default)s)", type=float, default=0, choices=Range(0, 1), action=ChildAction, parent=inputFileArgument)
 parserViolinPlotOptions.add_argument("--violin-width", help="change violin widths (default %(default)s)", type=float, default=0, choices=Range(0,), action=ChildAction, parent=inputFileArgument)
 parserViolinPlotOptions.add_argument("--violin-gap", help="gap between violins (default %(default)s) (not compatible with violin-width)", type=float, default=0.3, choices=Range(0, 1))
@@ -1379,7 +1379,7 @@ for inputArgs in args.input:
 
     # off or string
     translate = {'off': False }
-    for opt in ['box_points']:
+    for opt in ['box_points', 'violin_points']:
       _check = getattr(options, opt)
       setattr(options, opt, translate[_check] if _check in translate else f"'{_check}'")
 
@@ -1503,8 +1503,6 @@ defaultPadMargin = False
 doneSomething = False
 
 import pandas, numpy, pickle, xopen, os, io, gc, re, copy
-pandas.set_option('future.no_silent_downcasting', True)
-pandas.set_option('copy_on_write', True)
 
 stdinBuf = None
 stdinReferenced = 0 if os.path.exists('stdin') else sum([1 if filename == 'stdin' else 0 for inputArgs in args.input for filename in inputArgs['value']])
@@ -2663,7 +2661,7 @@ fig.add_trace(go.Violin(
     side='{side}',
     width={options.violin_width},
     scalemode='width',
-    points={False if options.violin_points == 'none' else options.violin_points},
+    points={options.violin_points},
     jitter={options.violin_jitter},
     orientation='{'v' if options.vertical else 'h'}',
     meanline_visible={True if options.violin_mean == 'line' else False},
