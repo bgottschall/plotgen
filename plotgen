@@ -35,7 +35,7 @@ from multiprocessing import cpu_count
 # TODO: replace iloc[...] = with isetitem(...)
 
 __prog__ = 'plotgen'
-__version__ = '0.8.21'
+__version__ = '0.8.22'
 __url__ = 'https://github.com/bgottschall/plotgen'
 
 
@@ -873,7 +873,7 @@ class DataframeActions:
       joinedFrame = None
       for frame in dataframes:
 
-        joinedFrame = frame if joinedFrame is None else pandas.concat([joinedFrame, frame], axis=(1 if function == 'index' else 0), join=how, verify_integrity=False, copy=True)
+        joinedFrame = frame if joinedFrame is None else pandas.concat([joinedFrame, frame], axis=(1 if function == 'index' else 0), join=how, verify_integrity=False)
       return joinedFrame
 
     def splitFramesByRowIdx(dataframes, rowIdx):
@@ -1138,7 +1138,7 @@ parserBarPlotOptions.add_argument("--bar-group-gap", help="set bar group gap (de
 parserViolinPlotOptions = parser.add_argument_group('violin plot options')
 parserViolinPlotOptions.add_argument("--violin-mode", help="choose violinmode (default %(default)s)", choices=['overlay', 'group', 'halfoverlay', 'halfgroup', 'halfhalf', 'poshalfgroup', 'neghalfgroup', 'poshalf', 'neghalf'], default='overlay', action=ChildAction, parent=inputFileArgument)
 parserViolinPlotOptions.add_argument("--violin-mean", help="choose violin mean (default %(default)s)", choices=['none', 'line', 'box'], default='none', action=ChildAction, parent=inputFileArgument)
-parserViolinPlotOptions.add_argument("--violin-points", help="set points mode for (default %(default)s)", type=str, default='none', choices=['all', 'outliers', 'suspectedoutliers', 'off'], action=ChildAction, parent=inputFileArgument)
+parserViolinPlotOptions.add_argument("--violin-points", help="set points mode for (default %(default)s)", type=str, default='off', choices=['all', 'outliers', 'suspectedoutliers', 'off'], action=ChildAction, parent=inputFileArgument)
 parserViolinPlotOptions.add_argument("--violin-jitter", help="set jitter for violin points (default %(default)s)", type=float, default=0, choices=Range(0, 1), action=ChildAction, parent=inputFileArgument)
 parserViolinPlotOptions.add_argument("--violin-width", help="change violin widths (default %(default)s)", type=float, default=0, choices=Range(0,), action=ChildAction, parent=inputFileArgument)
 parserViolinPlotOptions.add_argument("--violin-gap", help="gap between violins (default %(default)s) (not compatible with violin-width)", type=float, default=0.3, choices=Range(0, 1))
